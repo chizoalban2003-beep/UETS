@@ -3,7 +3,16 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
+import { AuthProvider } from "@/hooks/useAuth";
+import Layout from "@/components/Layout";
+import RequireAuth from "@/components/RequireAuth";
+import Landing from "./pages/Landing";
+import Auth from "./pages/Auth";
+import Markets from "./pages/Markets";
+import MarketNew from "./pages/MarketNew";
+import MarketDetail from "./pages/MarketDetail";
+import Portfolio from "./pages/Portfolio";
+import BotPage from "./pages/Bot";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -14,11 +23,20 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Landing />} />
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/markets" element={<Markets />} />
+              <Route path="/markets/new" element={<RequireAuth><MarketNew /></RequireAuth>} />
+              <Route path="/markets/:id" element={<MarketDetail />} />
+              <Route path="/portfolio" element={<RequireAuth><Portfolio /></RequireAuth>} />
+              <Route path="/bot" element={<RequireAuth><BotPage /></RequireAuth>} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
