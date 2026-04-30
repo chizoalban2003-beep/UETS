@@ -403,9 +403,60 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
     const j = await r.json();
     return j;
   }
+  if (name === "explain_concept") {
+    const lessons: Record<string, { plain: string; mid: string; deep: string }> = {
+      "band width": {
+        plain: "Every market has a 'normal range' around its trend line — the band. As long as price stays inside, the snap-back contract pays out. Wider bands = harder to break out.",
+        mid: "Band width is the half-width of the no-distortion zone around the trend (linear/EWMA/Bollinger). If `band_is_pct`, it's a % of the trend value; otherwise an absolute distance.",
+        deep: "At resolution, distortion = clamp((|final − trend| − band) / (2·band), 0, 1). Snapback YES pays 1 iff |final − trend| ≤ band, else 0.",
+      },
+      "distortion vs snapback": {
+        plain: "Two contracts per market. Snapback is a yes/no bet that price stays in the band. Distortion pays more the further price ends up outside the band.",
+        mid: "Snapback YES = binary inside-band payout. Distortion YES = linear payout in the [0,1] distortion ratio. They are NOT the same direction trade.",
+        deep: "Pricing both off the same constant-product AMM lets you express two views: variance (snapback NO) and tail size (distortion YES). Combine to build straddle/strangle analogs.",
+      },
+      "amm pricing": {
+        plain: "Price is set by a pool of YES and NO shares. Buying YES drains YES from the pool, making YES more expensive. Like a Uniswap pool but for one market outcome.",
+        mid: "x·y = k constant-product. Implied prob_yes = reserve_no / (reserve_yes + reserve_no). Slippage scales with trade size relative to liquidity.",
+        deep: "For shares Δ on YES side: new_yes = reserve_yes − Δ, new_no = k/new_yes, cost = new_no − reserve_no. Effective price = cost / Δ. Fee taken on |gross|.",
+      },
+      "fees": {
+        plain: "Each trade pays a small fee (1% by default) to discourage churn. It comes out of your cost on buys and your payout on sells.",
+        mid: "fee_bps default 100 (1%). Applied as |gross| × fee_bps/10000. Round-trip cost is ~2% before P&L.",
+        deep: "Edge needed = 2·fee + slippage. For high-frequency mean-reversion this often exceeds the actual mean-reversion alpha; size up or trade less.",
+      },
+      "hedging": {
+        plain: "If two markets move together, holding YES on both doubles your risk. A hedge is taking the opposite side on the smaller one to flatten total exposure.",
+        mid: "Pearson-correlate held markets' price series. If |corr| > 0.5 and you're net-long both, opposite-side or distortion NO on the lower-conviction one cuts net exposure.",
+        deep: "Beta-weight by position size and 30d realized vol. Optimal hedge ratio h* = ρ·σ_a/σ_b. Caretaker's `suggest_hedges` ranks pairs by |corr| but not yet by h*.",
+      },
+      "mean reversion": {
+        plain: "Bet that things stretched far from normal will snap back. Works in calm markets, fails when the trend itself is shifting.",
+        mid: "Buy snapback YES when |z-score| is high but momentum is decaying. Avoid when band is widening or trend slope is changing sign.",
+        deep: "Edge = E[reversion] · P(no regime change) − fees − slippage. Decay constant matters: EWMA bands adapt faster than linear, raising false-positive rate.",
+      },
+    };
+    const key = String(args.concept || "").toLowerCase();
+    const lesson = lessons[key];
+    if (!lesson) return { concept: args.concept, body: `No prepared lesson for "${args.concept}". Ask me in plain English and I'll explain.` };
+    let context_md = "";
+    if (args.context_market_id) {
+      const { data: m } = await supabase.from("markets").select("name,band_width,band_is_pct").eq("id", args.context_market_id).maybeSingle();
+      if (m) context_md = `Grounded for **${m.name}**: band ${m.band_is_pct ? `${m.band_width}%` : m.band_width}.`;
+    }
+    return { concept: args.concept, plain: lesson.plain, intermediate: lesson.mid, advanced: lesson.deep, context: context_md };
+  }
+  if (name === "list_briefings") {
+    const { data } = await supabase
+      .from("caretaker_events")
+      .select("id,kind,title,body_md,market_id,created_at,read_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(args.limit || 5);
+    return { briefings: data || [] };
+  }
   return { error: `unknown tool ${name}` };
 }
-
 function pearson(a: number[], b: number[]): number | null {
   const n = Math.min(a.length, b.length);
   if (n < 5) return null;
