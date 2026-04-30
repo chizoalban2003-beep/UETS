@@ -246,6 +246,20 @@ export default function CaretakerDock() {
                 </div>
               </Card>
             ))}
+            {toolStatuses.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {toolStatuses.map((t) => (
+                  <Badge key={t.id} variant="outline" className="text-[9px] px-1 py-0 gap-1">
+                    {t.status === "running" ? (
+                      <Loader2 className="w-2 h-2 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-2 h-2 text-bull" />
+                    )}
+                    {t.name}
+                  </Badge>
+                ))}
+              </div>
+            )}
             {busy && (
               <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
                 <Loader2 className="w-3 h-3 animate-spin" /> thinking…
