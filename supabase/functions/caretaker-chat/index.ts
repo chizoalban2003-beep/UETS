@@ -551,7 +551,7 @@ Keep messages tight. Use markdown. Lead with insight, then action.`;
             try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
             if (READ_ONLY_TOOLS.has(name)) {
               send({ type: "tool_call", id: tc.id, name, status: "running" });
-              const res = await execTool(supabase, user.id, name, args);
+              const res = await execTool(supabase, user.id, name, { ...args, _user_jwt: jwt });
               executedResults.push({ id: tc.id, name, res });
               send({ type: "tool_call", id: tc.id, name, status: "done" });
             } else if (MUTATING_TOOLS.has(name)) {
