@@ -278,22 +278,23 @@ Deno.serve(async (req) => {
   }).auth.getUser();
   if (!user) return new Response(JSON.stringify({ error: "invalid jwt" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-  try {
-    const { message } = await req.json();
-    if (!message || typeof message !== "string") {
-      return new Response(JSON.stringify({ error: "message required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
+  let body: any;
+  try { body = await req.json(); } catch { return new Response(JSON.stringify({ error: "bad json" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }); }
+  const message = body?.message;
+  if (!message || typeof message !== "string") {
+    return new Response(JSON.stringify({ error: "message required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
 
-    await supabase.from("caretaker_messages").insert({ user_id: user.id, role: "user", content: message });
+  await supabase.from("caretaker_messages").insert({ user_id: user.id, role: "user", content: message });
 
-    const ctx = await getUserContext(supabase, user.id);
-    const { data: history } = await supabase.from("caretaker_messages")
-      .select("role,content,tool_calls,tool_call_id,result")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: true })
-      .limit(40);
+  const ctx = await getUserContext(supabase, user.id);
+  const { data: history } = await supabase.from("caretaker_messages")
+    .select("role,content,tool_calls,tool_call_id,result")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(40);
 
-    const systemPrompt = `You are the Caretaker — a financial co-pilot for an "Elastic Trend Markets" trading platform.
+  const systemPrompt = `You are the Caretaker — a financial co-pilot for an "Elastic Trend Markets" trading platform.
 
 You can chat, plan, set goals, place trades on the user's behalf (with their permission), spin up new live markets, adjust the trading bot, and generate reports. Be concise, specific, and proactive.
 
@@ -310,96 +311,169 @@ When a tool requires user approval (mode=assist), the system surfaces an approva
 
 Keep messages tight. Use markdown. Lead with insight, then action.`;
 
-    const messages: any[] = [{ role: "system", content: systemPrompt }];
-    for (const h of history || []) {
-      if (h.role === "assistant" && h.tool_calls) {
-        messages.push({ role: "assistant", content: h.content || "", tool_calls: h.tool_calls });
-      } else if (h.role === "tool") {
-        messages.push({ role: "tool", tool_call_id: h.tool_call_id, content: JSON.stringify(h.result) });
-      } else if (h.content) {
-        messages.push({ role: h.role, content: h.content });
-      }
+  const conv: any[] = [{ role: "system", content: systemPrompt }];
+  for (const h of history || []) {
+    if (h.role === "assistant" && h.tool_calls) {
+      conv.push({ role: "assistant", content: h.content || "", tool_calls: h.tool_calls });
+    } else if (h.role === "tool") {
+      conv.push({ role: "tool", tool_call_id: h.tool_call_id, content: JSON.stringify(h.result) });
+    } else if (h.content) {
+      conv.push({ role: h.role, content: h.content });
     }
-
-    const isAutopilot = ctx.bot?.caretaker_mode === "autopilot";
-    const isReadOnly = ctx.bot?.caretaker_mode === "chat";
-
-    for (let step = 0; step < 5; step++) {
-      const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
-          messages,
-          tools: isReadOnly ? TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)) : TOOLS,
-        }),
-      });
-      if (aiResp.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit, please wait a moment." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      if (aiResp.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      if (!aiResp.ok) {
-        const t = await aiResp.text();
-        return new Response(JSON.stringify({ error: `AI error: ${t.slice(0, 300)}` }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-      const aiJson = await aiResp.json();
-      const choice = aiJson.choices?.[0]?.message;
-      if (!choice) break;
-      const toolCalls = choice.tool_calls || [];
-
-      if (toolCalls.length === 0) {
-        await supabase.from("caretaker_messages").insert({ user_id: user.id, role: "assistant", content: choice.content || "" });
-        return new Response(JSON.stringify({ reply: choice.content || "", pending: [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-
-      const pendingApprovals: any[] = [];
-      const executedResults: any[] = [];
-      for (const tc of toolCalls) {
-        const name = tc.function?.name;
-        const args = JSON.parse(tc.function?.arguments || "{}");
-        if (READ_ONLY_TOOLS.has(name)) {
-          const res = await execTool(supabase, user.id, name, args);
-          executedResults.push({ id: tc.id, name, res });
-        } else if (MUTATING_TOOLS.has(name)) {
-          if (isReadOnly) {
-            executedResults.push({ id: tc.id, name, res: { error: "Caretaker is in chat-only mode; cannot execute actions." } });
-          } else if (isAutopilot) {
-            const res = await execTool(supabase, user.id, name, { ...args, _user_jwt: jwt });
-            executedResults.push({ id: tc.id, name, res });
-          } else {
-            pendingApprovals.push({ id: tc.id, name, args });
-          }
-        } else {
-          executedResults.push({ id: tc.id, name, res: { error: `unknown tool ${name}` } });
-        }
-      }
-
-      await supabase.from("caretaker_messages").insert({
-        user_id: user.id, role: "assistant", content: choice.content || "",
-        tool_calls: toolCalls, pending_approval: pendingApprovals.length > 0,
-      });
-
-      for (const r of executedResults) {
-        await supabase.from("caretaker_messages").insert({
-          user_id: user.id, role: "tool", tool_call_id: r.id, result: r.res, content: JSON.stringify(r.res),
-        });
-        messages.push({ role: "assistant", content: choice.content || "", tool_calls: [toolCalls.find((t: any) => t.id === r.id)] });
-        messages.push({ role: "tool", tool_call_id: r.id, content: JSON.stringify(r.res) });
-      }
-
-      if (pendingApprovals.length > 0) {
-        return new Response(JSON.stringify({
-          reply: choice.content || "I'd like to take some actions — please review:",
-          pending: pendingApprovals,
-        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      }
-    }
-
-    return new Response(JSON.stringify({ reply: "(reached step limit)", pending: [] }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e: any) {
-    console.error("caretaker-chat error", e);
-    return new Response(JSON.stringify({ error: String(e?.message || e) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
+
+  const isAutopilot = ctx.bot?.caretaker_mode === "autopilot";
+  const isReadOnly = ctx.bot?.caretaker_mode === "chat";
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const enc = new TextEncoder();
+      const send = (obj: any) => {
+        try { controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`)); } catch {}
+      };
+
+      try {
+        for (let step = 0; step < 5; step++) {
+          const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: "google/gemini-3-flash-preview",
+              messages: conv,
+              tools: isReadOnly ? TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)) : TOOLS,
+              stream: true,
+            }),
+          });
+
+          if (aiResp.status === 429) { send({ type: "error", error: "Rate limit, please wait a moment." }); break; }
+          if (aiResp.status === 402) { send({ type: "error", error: "AI credits exhausted. Add funds in Settings → Workspace → Usage." }); break; }
+          if (!aiResp.ok || !aiResp.body) {
+            const t = await aiResp.text().catch(() => "");
+            send({ type: "error", error: `AI error: ${t.slice(0, 300)}` });
+            break;
+          }
+
+          const reader = aiResp.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = "";
+          let assistantContent = "";
+          const toolAcc: Record<number, { id?: string; name?: string; args: string }> = {};
+          let streamDone = false;
+
+          while (!streamDone) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+
+            let nl: number;
+            while ((nl = buf.indexOf("\n")) !== -1) {
+              let line = buf.slice(0, nl);
+              buf = buf.slice(nl + 1);
+              if (line.endsWith("\r")) line = line.slice(0, -1);
+              if (!line || line.startsWith(":")) continue;
+              if (!line.startsWith("data: ")) continue;
+              const payload = line.slice(6).trim();
+              if (payload === "[DONE]") { streamDone = true; break; }
+              let chunk: any;
+              try { chunk = JSON.parse(payload); }
+              catch {
+                buf = line + "\n" + buf;
+                break;
+              }
+              const delta = chunk?.choices?.[0]?.delta;
+              if (!delta) continue;
+              if (typeof delta.content === "string" && delta.content.length) {
+                assistantContent += delta.content;
+                send({ type: "text", delta: delta.content });
+              }
+              if (Array.isArray(delta.tool_calls)) {
+                for (const tc of delta.tool_calls) {
+                  const idx = tc.index ?? 0;
+                  if (!toolAcc[idx]) toolAcc[idx] = { args: "" };
+                  if (tc.id) toolAcc[idx].id = tc.id;
+                  if (tc.function?.name) toolAcc[idx].name = tc.function.name;
+                  if (tc.function?.arguments) toolAcc[idx].args += tc.function.arguments;
+                }
+              }
+            }
+          }
+
+          const toolCalls = Object.keys(toolAcc)
+            .map((k) => Number(k))
+            .sort((a, b) => a - b)
+            .map((i) => {
+              const a = toolAcc[i];
+              return { id: a.id || `call_${i}`, type: "function", function: { name: a.name || "", arguments: a.args || "{}" } };
+            })
+            .filter((tc) => tc.function.name);
+
+          if (toolCalls.length === 0) {
+            await supabase.from("caretaker_messages").insert({ user_id: user.id, role: "assistant", content: assistantContent });
+            send({ type: "done" });
+            break;
+          }
+
+          const pendingApprovals: any[] = [];
+          const executedResults: any[] = [];
+          for (const tc of toolCalls) {
+            const name = tc.function.name;
+            let args: any = {};
+            try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
+            if (READ_ONLY_TOOLS.has(name)) {
+              send({ type: "tool_call", id: tc.id, name, status: "running" });
+              const res = await execTool(supabase, user.id, name, args);
+              executedResults.push({ id: tc.id, name, res });
+              send({ type: "tool_call", id: tc.id, name, status: "done" });
+            } else if (MUTATING_TOOLS.has(name)) {
+              if (isReadOnly) {
+                executedResults.push({ id: tc.id, name, res: { error: "Caretaker is in chat-only mode; cannot execute actions." } });
+              } else if (isAutopilot) {
+                send({ type: "tool_call", id: tc.id, name, status: "running" });
+                const res = await execTool(supabase, user.id, name, { ...args, _user_jwt: jwt });
+                executedResults.push({ id: tc.id, name, res });
+                send({ type: "tool_call", id: tc.id, name, status: "done" });
+              } else {
+                pendingApprovals.push({ id: tc.id, name, args });
+              }
+            } else {
+              executedResults.push({ id: tc.id, name, res: { error: `unknown tool ${name}` } });
+            }
+          }
+
+          await supabase.from("caretaker_messages").insert({
+            user_id: user.id, role: "assistant", content: assistantContent,
+            tool_calls: toolCalls, pending_approval: pendingApprovals.length > 0,
+          });
+
+          conv.push({ role: "assistant", content: assistantContent, tool_calls: toolCalls });
+          for (const r of executedResults) {
+            await supabase.from("caretaker_messages").insert({
+              user_id: user.id, role: "tool", tool_call_id: r.id, result: r.res, content: JSON.stringify(r.res),
+            });
+            conv.push({ role: "tool", tool_call_id: r.id, content: JSON.stringify(r.res) });
+          }
+
+          if (pendingApprovals.length > 0) {
+            send({ type: "pending", items: pendingApprovals });
+            send({ type: "done" });
+            break;
+          }
+        }
+      } catch (e: any) {
+        console.error("caretaker-chat stream error", e);
+        try { controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "error", error: String(e?.message || e) })}\n\n`)); } catch {}
+      } finally {
+        try { controller.close(); } catch {}
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 });
