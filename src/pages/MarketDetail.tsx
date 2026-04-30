@@ -39,6 +39,12 @@ export default function MarketDetail() {
     setMarket(m);
     setPoints((pts || []).map((p) => ({ ts: new Date(p.ts).getTime(), value: Number(p.value) })));
     setContracts(cts || []);
+    if (m?.data_source_id) {
+      const { data: ds } = await supabase.from("data_sources").select("*").eq("id", m.data_source_id).maybeSingle();
+      setDataSource(ds);
+    } else {
+      setDataSource(null);
+    }
     if (user && cts) {
       const { data: pos } = await supabase
         .from("positions")
