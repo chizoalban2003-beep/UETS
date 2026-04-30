@@ -612,7 +612,7 @@ Lead with insight, then action. Keep messages tight. Use markdown.`;
             body: JSON.stringify({
               model: "google/gemini-3-flash-preview",
               messages: conv,
-              tools: isReadOnly ? TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)) : TOOLS,
+              tools: isTeach ? TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)) : TOOLS,
               stream: true,
             }),
           });
@@ -697,14 +697,43 @@ Lead with insight, then action. Keep messages tight. Use markdown.`;
               executedResults.push({ id: tc.id, name, res });
               send({ type: "tool_call", id: tc.id, name, status: "done" });
             } else if (MUTATING_TOOLS.has(name)) {
-              if (isReadOnly) {
-                executedResults.push({ id: tc.id, name, res: { error: "Caretaker is in chat-only mode; cannot execute actions." } });
-              } else if (isAutopilot) {
-                send({ type: "tool_call", id: tc.id, name, status: "running" });
-                const res = await execTool(supabase, user.id, name, { ...args, _user_jwt: jwt });
-                executedResults.push({ id: tc.id, name, res });
-                send({ type: "tool_call", id: tc.id, name, status: "done" });
+              if (isTeach) {
+                executedResults.push({ id: tc.id, name, res: { error: "Caretaker is in Teach mode — describe the trade as a lesson instead of executing it." } });
+              } else if (isCopilot || isAutopilot) {
+                const violation = await violatesGuardrails(name, args);
+                if (violation) {
+                  if (isAutopilot) {
+                    // Silently skip + journal it
+                    await supabase.from("caretaker_events").insert({
+                      user_id: user.id,
+                      market_id: null,
+                      kind: "action_taken",
+                      title: `Skipped ${name}`,
+                      body_md: `Autopilot skipped a proposed \`${name}\` because: ${violation}.`,
+                      metrics: { args, violation },
+                    });
+                    executedResults.push({ id: tc.id, name, res: { skipped: true, reason: violation } });
+                  } else {
+                    // Co-pilot: fall back to approval
+                    pendingApprovals.push({ id: tc.id, name, args, guardrail_warning: violation });
+                  }
+                } else {
+                  send({ type: "tool_call", id: tc.id, name, status: "running" });
+                  const res = await execTool(supabase, user.id, name, { ...args, _user_jwt: jwt });
+                  executedResults.push({ id: tc.id, name, res });
+                  send({ type: "tool_call", id: tc.id, name, status: "done" });
+                  // Journal the action
+                  await supabase.from("caretaker_events").insert({
+                    user_id: user.id,
+                    market_id: null,
+                    kind: "action_taken",
+                    title: `${cmode === "autopilot" ? "Autopilot" : "Co-pilot"} ran ${name}`,
+                    body_md: `Executed \`${name}\` with args \`${JSON.stringify(args).slice(0, 240)}\`.`,
+                    metrics: { args, result: res },
+                  });
+                }
               } else {
+                // Suggest mode (default)
                 pendingApprovals.push({ id: tc.id, name, args });
               }
             } else {
