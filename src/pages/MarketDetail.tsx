@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { buildBandSeries, distortion, ammPriceYes, ammQuoteBuy, formatNum } from "@/lib/trend";
@@ -13,7 +15,8 @@ import { PROVIDER_LABELS } from "@/lib/providers";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import DataSourceBadge from "@/components/DataSourceBadge";
-import { Radio, AlertCircle } from "lucide-react";
+import MarketLifecycle from "@/components/MarketLifecycle";
+import { Radio, AlertCircle, ShieldAlert, FileText } from "lucide-react";
 
 type Market = any;
 type Contract = any;
@@ -28,15 +31,21 @@ export default function MarketDetail() {
   const [positions, setPositions] = useState<Record<string, Position>>({});
   const [dataSource, setDataSource] = useState<any>(null);
   const [resolveValue, setResolveValue] = useState("");
+  const [stake, setStake] = useState(400);
+  const [disputes, setDisputes] = useState<any[]>([]);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [{ data: m }, { data: pts }, { data: cts }] = await Promise.all([
+    const [{ data: m }, { data: pts }, { data: cts }, { data: dsp }] = await Promise.all([
       supabase.from("markets").select("*").eq("id", id).maybeSingle(),
       supabase.from("market_data_points").select("ts,value").eq("market_id", id).order("ts"),
       supabase.from("contracts").select("*").eq("market_id", id),
+      supabase.from("market_disputes").select("*").eq("market_id", id).order("created_at", { ascending: false }),
     ]);
     setMarket(m);
+    setDisputes(dsp || []);
     setPoints((pts || []).map((p) => ({ ts: new Date(p.ts).getTime(), value: Number(p.value) })));
     setContracts(cts || []);
     if (m?.data_source_id) {
@@ -97,12 +106,18 @@ export default function MarketDetail() {
           <h1 className="text-3xl font-semibold tracking-tight mt-1">{market.name}</h1>
           {market.description && <p className="text-sm text-muted-foreground mt-2 max-w-2xl">{market.description}</p>}
         </div>
-        <div className="text-right text-sm">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">Status</div>
-          <div className={`font-medium ${market.status === "open" ? "text-bull" : "text-muted-foreground"}`}>{market.status}</div>
-          <div className="text-xs text-muted-foreground mt-1">resolves {format(new Date(market.resolution_at), "PP")}</div>
+        <div className="text-right text-sm space-y-1">
+          <Badge variant="outline" className="text-xs">{market.status}</Badge>
+          <div className="text-xs text-muted-foreground">resolves {format(new Date(market.resolution_at), "PP")}</div>
+          {Number(market.creator_stake) > 0 && (
+            <div className="text-xs text-muted-foreground">
+              Creator stake <span className="font-mono-num text-foreground">${Number(market.creator_stake).toFixed(0)}</span>
+            </div>
+          )}
         </div>
       </div>
+
+      <Card className="p-3 mb-6"><MarketLifecycle status={market.status} /></Card>
 
       {dataSource && (
         <Card className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -194,26 +209,154 @@ export default function MarketDetail() {
         </div>
       </div>
 
-      {/* Resolve panel for creator */}
-      {isCreator && market.status === "open" && (
+      {/* Rules */}
+      {market.rules_md && (
         <Card className="p-5 mt-6">
-          <h3 className="font-medium mb-2">Resolve this market</h3>
-          <p className="text-sm text-muted-foreground mb-3">As the creator, enter the final observed value to settle all positions.</p>
-          <div className="flex gap-2 max-w-sm">
-            <Input type="number" step="any" placeholder="Final value" value={resolveValue} onChange={(e) => setResolveValue(e.target.value)} />
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="w-4 h-4 text-muted-foreground" />
+            <h3 className="font-medium">Resolution & dispute rules</h3>
+          </div>
+          <pre className="text-sm whitespace-pre-wrap text-muted-foreground font-sans">{market.rules_md}</pre>
+        </Card>
+      )}
+
+      {/* Creator submit-with-stake (draft -> open) */}
+      {isCreator && market.status === "draft" && (
+        <Card className="p-5 mt-6">
+          <h3 className="font-medium mb-2">Publish this market</h3>
+          <p className="text-sm text-muted-foreground mb-3">
+            Lock a creator stake to seed the AMM and publish. You earn 50% of trading fees on resolution.
+            Stake is refunded at resolution (or with a 5% penalty if you cancel after going live).
+          </p>
+          <div className="flex gap-2 max-w-sm items-end">
+            <div className="flex-1">
+              <Label className="text-xs">Stake (min $400)</Label>
+              <Input type="number" min={400} step={50} value={stake} onChange={(e) => setStake(Math.max(400, Number(e.target.value) || 0))} />
+            </div>
             <Button
+              disabled={busy}
               onClick={async () => {
-                const v = Number(resolveValue);
-                if (Number.isNaN(v)) return toast.error("Enter a number");
-                const { error } = await supabase.rpc("resolve_market", { _market_id: market.id, _final_value: v });
-                if (error) return toast.error(error.message);
-                toast.success("Market resolved & payouts distributed");
+                setBusy(true);
+                const { data, error } = await supabase.functions.invoke("market-submit", {
+                  body: { market_id: market.id, stake },
+                });
+                setBusy(false);
+                if (error || (data as any)?.error) return toast.error((data as any)?.error || error?.message || "Failed");
+                toast.success("Market published");
                 load();
               }}
             >
-              Resolve
+              Publish
             </Button>
           </div>
+        </Card>
+      )}
+
+      {/* Pending resolution (manual final value) */}
+      {isCreator && market.status === "pending_resolution" && !market.data_source_id && (
+        <Card className="p-5 mt-6">
+          <h3 className="font-medium mb-2">Post final value</h3>
+          <p className="text-sm text-muted-foreground mb-3">
+            Resolution date passed. Post the final observed value — traders then have a 24h dispute window before payouts settle.
+          </p>
+          <div className="flex gap-2 max-w-sm">
+            <Input type="number" step="any" placeholder="Final value" value={resolveValue} onChange={(e) => setResolveValue(e.target.value)} />
+            <Button
+              disabled={busy}
+              onClick={async () => {
+                const v = Number(resolveValue);
+                if (Number.isNaN(v)) return toast.error("Enter a number");
+                setBusy(true);
+                const { error } = await supabase
+                  .from("markets")
+                  .update({ status: "disputable", final_value: v, final_posted_at: new Date().toISOString() })
+                  .eq("id", market.id);
+                setBusy(false);
+                if (error) return toast.error(error.message);
+                toast.success("Final value posted — dispute window open");
+                load();
+              }}
+            >
+              Post
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Disputable */}
+      {market.status === "disputable" && (
+        <Card className="p-5 mt-6">
+          <div className="flex items-center gap-2 mb-2">
+            <ShieldAlert className="w-4 h-4 text-accent" />
+            <h3 className="font-medium">Dispute window open</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-3">
+            Final value posted: <span className="font-mono-num text-foreground">{Number(market.final_value).toFixed(4)}</span>
+            {market.final_posted_at && <> · settles { formatDistanceToNow(new Date(new Date(market.final_posted_at).getTime() + 86400000), { addSuffix: true }) }</>}
+          </p>
+          {user && !isCreator && (
+            <div className="space-y-2 max-w-xl mb-4">
+              <Label className="text-xs">Raise a dispute (locks $50 bond)</Label>
+              <Textarea rows={3} value={disputeReason} onChange={(e) => setDisputeReason(e.target.value)}
+                placeholder="Explain why the posted value is wrong (min 10 chars)" />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || disputeReason.trim().length < 10}
+                onClick={async () => {
+                  setBusy(true);
+                  const { data, error } = await supabase.functions.invoke("raise-dispute", {
+                    body: { market_id: market.id, reason: disputeReason },
+                  });
+                  setBusy(false);
+                  if (error || (data as any)?.error) return toast.error((data as any)?.error || error?.message || "Failed");
+                  toast.success("Dispute raised");
+                  setDisputeReason("");
+                  load();
+                }}
+              >
+                Raise dispute
+              </Button>
+            </div>
+          )}
+          {disputes.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-xs uppercase tracking-wider text-muted-foreground">Open disputes</div>
+              {disputes.map((d) => (
+                <div key={d.id} className="text-sm border border-border/60 rounded p-2">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="text-[10px]">{d.status}</Badge>
+                    <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}</span>
+                  </div>
+                  <div className="mt-1 text-muted-foreground">{d.reason}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Resolved + creator payout */}
+      {isCreator && market.status === "resolved" && !market.payout_claimed_at && (
+        <Card className="p-5 mt-6">
+          <h3 className="font-medium mb-2">Claim creator payout</h3>
+          <p className="text-sm text-muted-foreground mb-3">
+            Stake <span className="font-mono-num text-foreground">${Number(market.creator_stake).toFixed(2)}</span> + 50% of fees{" "}
+            <span className="font-mono-num text-bull">${(Number(market.fees_accrued) * 0.5).toFixed(2)}</span>
+          </p>
+          <Button
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              const { data, error } = await supabase.functions.invoke("creator-payout", { body: { market_id: market.id } });
+              setBusy(false);
+              if (error || (data as any)?.error) return toast.error((data as any)?.error || error?.message || "Failed");
+              toast.success("Payout claimed");
+              load();
+            }}
+          >
+            Claim
+          </Button>
         </Card>
       )}
     </div>

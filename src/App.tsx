@@ -10,6 +10,7 @@ import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import Markets from "./pages/Markets";
 import MarketNew from "./pages/MarketNew";
+import MarketsMine from "./pages/MarketsMine";
 import MarketDetail from "./pages/MarketDetail";
 import Portfolio from "./pages/Portfolio";
 import BotPage from "./pages/Bot";
@@ -35,6 +36,7 @@ const App = () => (
               <Route path="/auth" element={<Auth />} />
               <Route path="/markets" element={<Markets />} />
               <Route path="/markets/new" element={<RequireAuth><MarketNew /></RequireAuth>} />
+              <Route path="/markets/mine" element={<RequireAuth><MarketsMine /></RequireAuth>} />
               <Route path="/markets/:id" element={<MarketDetail />} />
               <Route path="/portfolio" element={<RequireAuth><Portfolio /></RequireAuth>} />
               <Route path="/bot" element={<RequireAuth><BotPage /></RequireAuth>} />
