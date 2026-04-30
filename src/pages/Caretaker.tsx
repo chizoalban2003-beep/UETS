@@ -8,52 +8,78 @@ import { Badge } from "@/components/ui/badge";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
 import { Sparkles, Send, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { streamCaretaker } from "@/lib/caretakerStream";
 
-type Msg = { id: string; role: string; content: string | null; tool_calls?: any; result?: any; pending_approval?: boolean; approved?: boolean | null; tool_call_id?: string | null };
+type Msg = { id: string; role: string; content: string | null; tool_calls?: any; result?: any; pending_approval?: boolean; approved?: boolean | null; tool_call_id?: string | null; streaming?: boolean };
 type Pending = { id: string; name: string; args: any };
+type ToolStatus = { id: string; name: string; status: "running" | "done" };
 
 export default function Caretaker() {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [pending, setPending] = useState<Pending[]>([]);
+  const [toolStatuses, setToolStatuses] = useState<ToolStatus[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const scrollDown = () =>
+    setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }), 50);
 
   const load = async () => {
     if (!user) return;
     const { data } = await supabase.from("caretaker_messages")
       .select("*").eq("user_id", user.id).order("created_at", { ascending: true }).limit(60);
     setMessages((data as any) || []);
-    setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }), 50);
+    scrollDown();
   };
 
   useEffect(() => { load(); }, [user]);
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const send = async () => {
     if (!input.trim() || !user) return;
     const text = input.trim();
     setInput("");
     setBusy(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/caretaker-chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token}`,
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        },
-        body: JSON.stringify({ message: text }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "chat failed");
-      setPending(j.pending || []);
-      await load();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed");
-    }
-    setBusy(false);
+    setToolStatuses([]);
+
+    // Optimistic user + streaming assistant bubble
+    const userMsgId = `local-u-${Date.now()}`;
+    const asstMsgId = `local-a-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
+      { id: userMsgId, role: "user", content: text },
+      { id: asstMsgId, role: "assistant", content: "", streaming: true },
+    ]);
+    scrollDown();
+
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    await streamCaretaker(text, (e) => {
+      if (e.type === "text") {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === asstMsgId ? { ...m, content: (m.content || "") + e.delta } : m)),
+        );
+        scrollDown();
+      } else if (e.type === "tool_call") {
+        setToolStatuses((prev) => {
+          const ex = prev.find((t) => t.id === e.id);
+          if (ex) return prev.map((t) => (t.id === e.id ? { ...t, status: e.status } : t));
+          return [...prev, { id: e.id, name: e.name, status: e.status }];
+        });
+      } else if (e.type === "pending") {
+        setPending(e.items);
+      } else if (e.type === "error") {
+        toast.error(e.error);
+      } else if (e.type === "done") {
+        setBusy(false);
+        // Reconcile with persisted DB rows
+        load();
+      }
+    }, ac.signal);
   };
 
   const respond = async (p: Pending, approved: boolean) => {
@@ -130,6 +156,20 @@ export default function Caretaker() {
               </div>
             </Card>
           ))}
+          {toolStatuses.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {toolStatuses.map((t) => (
+                <Badge key={t.id} variant="outline" className="text-[10px] gap-1">
+                  {t.status === "running" ? (
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-2.5 h-2.5 text-bull" />
+                  )}
+                  {t.name}
+                </Badge>
+              ))}
+            </div>
+          )}
           {busy && <div className="text-xs text-muted-foreground flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin" /> thinking…</div>}
         </div>
         <div className="border-t border-border p-3 flex gap-2">
