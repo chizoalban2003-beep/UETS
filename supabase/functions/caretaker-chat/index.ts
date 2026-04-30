@@ -552,8 +552,50 @@ Lead with insight, then action. Keep messages tight. Use markdown.`;
     }
   }
 
-  const isAutopilot = ctx.bot?.caretaker_mode === "autopilot";
-  const isReadOnly = ctx.bot?.caretaker_mode === "chat";
+  // New caretaker_mode (profiles): teach | suggest | copilot | autopilot.
+  // Map to behavior:
+  //   teach     → tools restricted to read-only; mutating calls are converted to lessons.
+  //   suggest   → mutating tools become approval cards (default).
+  //   copilot   → mutating tools auto-execute IF within bot guardrails; else fall back to approval.
+  //   autopilot → mutating tools auto-execute IF within guardrails; else silently skipped + journaled.
+  const isTeach = cmode === "teach";
+  const isCopilot = cmode === "copilot";
+  const isAutopilot = cmode === "autopilot";
+  const guardCaps = {
+    max_position_size: Number(ctx.bot?.max_position_size || 0),
+    max_daily_loss: Number(ctx.bot?.max_daily_loss || 0),
+    enabled_market_ids: (ctx.bot?.enabled_market_ids || []) as string[],
+  };
+
+  // Compute today's realized loss (negative cost flows from bot trades) for max_daily_loss check.
+  const sinceMidnight = new Date(); sinceMidnight.setHours(0, 0, 0, 0);
+  const { data: todaysTrades } = await supabase
+    .from("trades")
+    .select("side,cost,fee,by_bot,created_at")
+    .eq("user_id", user.id)
+    .gte("created_at", sinceMidnight.toISOString());
+  const realizedToday = (todaysTrades || []).reduce((acc: number, t: any) => {
+    return acc + (t.side?.startsWith("sell") ? Number(t.cost) : -Number(t.cost) - Number(t.fee || 0));
+  }, 0);
+
+  // Check whether a mutating tool call is within guardrails. Returns null if OK, or a reason string.
+  async function violatesGuardrails(name: string, args: any): Promise<string | null> {
+    if (name !== "place_trade") return null; // only place_trade hits position/loss caps
+    if (guardCaps.max_position_size && Number(args.shares) > guardCaps.max_position_size) {
+      return `shares ${args.shares} > max_position_size ${guardCaps.max_position_size}`;
+    }
+    if (guardCaps.max_daily_loss && realizedToday < -Math.abs(guardCaps.max_daily_loss)) {
+      return `daily loss cap reached (${realizedToday.toFixed(2)} ≤ -${guardCaps.max_daily_loss})`;
+    }
+    if (guardCaps.enabled_market_ids?.length) {
+      // resolve contract → market
+      const { data: c } = await supabase.from("contracts").select("market_id").eq("id", args.contract_id).maybeSingle();
+      if (c && !guardCaps.enabled_market_ids.includes(c.market_id)) {
+        return `market not in enabled_market_ids`;
+      }
+    }
+    return null;
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
