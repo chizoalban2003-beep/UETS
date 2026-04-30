@@ -106,12 +106,18 @@ export default function MarketDetail() {
           <h1 className="text-3xl font-semibold tracking-tight mt-1">{market.name}</h1>
           {market.description && <p className="text-sm text-muted-foreground mt-2 max-w-2xl">{market.description}</p>}
         </div>
-        <div className="text-right text-sm">
-          <div className="text-xs uppercase tracking-wider text-muted-foreground">Status</div>
-          <div className={`font-medium ${market.status === "open" ? "text-bull" : "text-muted-foreground"}`}>{market.status}</div>
-          <div className="text-xs text-muted-foreground mt-1">resolves {format(new Date(market.resolution_at), "PP")}</div>
+        <div className="text-right text-sm space-y-1">
+          <Badge variant="outline" className="text-xs">{market.status}</Badge>
+          <div className="text-xs text-muted-foreground">resolves {format(new Date(market.resolution_at), "PP")}</div>
+          {Number(market.creator_stake) > 0 && (
+            <div className="text-xs text-muted-foreground">
+              Creator stake <span className="font-mono-num text-foreground">${Number(market.creator_stake).toFixed(0)}</span>
+            </div>
+          )}
         </div>
       </div>
+
+      <Card className="p-3 mb-6"><MarketLifecycle status={market.status} /></Card>
 
       {dataSource && (
         <Card className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
