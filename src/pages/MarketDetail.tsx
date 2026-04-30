@@ -61,12 +61,13 @@ export default function MarketDetail() {
     load();
   }, [load]);
 
-  // Realtime contracts (so prices update live)
+  // Realtime contracts (so prices update live) + new data points
   useEffect(() => {
     if (!id) return;
     const ch = supabase
       .channel(`market-${id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "contracts", filter: `market_id=eq.${id}` }, load)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "market_data_points", filter: `market_id=eq.${id}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [id, load]);
