@@ -16,6 +16,8 @@ import BotPage from "./pages/Bot";
 import Caretaker from "./pages/Caretaker";
 import Reports from "./pages/Reports";
 import Goals from "./pages/Goals";
+import Backtest from "./pages/Backtest";
+import Assessment from "./pages/Assessment";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -39,6 +41,8 @@ const App = () => (
               <Route path="/caretaker" element={<RequireAuth><Caretaker /></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
               <Route path="/goals" element={<RequireAuth><Goals /></RequireAuth>} />
+              <Route path="/backtest" element={<RequireAuth><Backtest /></RequireAuth>} />
+              <Route path="/assessment" element={<RequireAuth><Assessment /></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

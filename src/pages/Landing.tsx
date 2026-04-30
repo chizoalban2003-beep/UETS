@@ -13,20 +13,20 @@ export default function Landing() {
         <div className="container relative py-20 md:py-32">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary/60 border border-border text-xs text-muted-foreground mb-6">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" /> Paper-trading sandbox · live now
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" /> Driftworks · Demo open · Real capital after assessment
             </div>
             <h1 className="text-5xl md:text-7xl font-semibold tracking-tight leading-[1.05]">
-              Trade the <span className="bg-gradient-primary bg-clip-text text-transparent">stretch</span>.<br />
+              Trade the <span className="bg-gradient-primary bg-clip-text text-transparent">drift</span>.<br />
               Hedge the snap-back.
             </h1>
             <p className="mt-6 text-lg text-muted-foreground max-w-xl">
-              Treat any dataset or event with a trend like an elastic object. When reality
-              stretches or compresses against the model, the distortion is a tradable risk —
-              and an AI bot can hedge it for you.
+              Driftworks turns any trended dataset — prices, weather, climate, on-chain
+              metrics — into a tradable market. Trade the distortion from trend, hedge the
+              snap-back, and let an AI caretaker run the playbook.
             </p>
             <div className="mt-10 flex flex-wrap gap-3">
               <Button size="lg" asChild><Link to="/markets">Browse markets <ArrowRight className="w-4 h-4 ml-1" /></Link></Button>
-              <Button size="lg" variant="outline" asChild><Link to="/markets/new">Create a market</Link></Button>
+              <Button size="lg" variant="outline" asChild><Link to="/assessment">Real-capital assessment</Link></Button>
             </div>
           </div>
         </div>

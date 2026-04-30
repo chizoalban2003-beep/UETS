@@ -8,8 +8,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
-const READ_ONLY_TOOLS = new Set(["get_portfolio", "get_market_snapshot", "list_top_markets", "list_goals"]);
-const MUTATING_TOOLS = new Set(["place_trade", "create_market_from_template", "update_bot_config", "set_goal", "generate_report"]);
+const READ_ONLY_TOOLS = new Set(["get_portfolio", "get_market_snapshot", "list_top_markets", "list_goals", "run_backtest", "suggest_hedges"]);
+const MUTATING_TOOLS = new Set(["place_trade", "create_market_from_template", "update_bot_config", "set_goal", "generate_report", "reset_paper_balance"]);
 
 const TOOLS = [
   {
@@ -131,6 +131,42 @@ const TOOLS = [
         type: "object",
         properties: { days: { type: "number", description: "Lookback in days. Default 7." } },
         additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "run_backtest",
+      description: "Replay how the bot would have performed against historical data on selected markets. Read-only simulation.",
+      parameters: {
+        type: "object",
+        properties: {
+          market_ids: { type: "array", items: { type: "string" } },
+          lookback_days: { type: "number", description: "7-90, default 30" },
+          strategy: { type: "string", enum: ["mean_reversion", "momentum"] },
+        },
+        required: ["market_ids"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "suggest_hedges",
+      description: "Analyze current positions across markets, compute correlations, and propose offsetting trades to reduce correlated exposure. Returns proposals as readable suggestions; the user can ask you to place_trade them after.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "reset_paper_balance",
+      description: "Reset the user's paper-trading wallet back to §10,000 and zero out all open positions. Rate-limited to once per 24h.",
+      parameters: {
+        type: "object",
+        properties: { rationale: { type: "string" } },
+        required: ["rationale"], additionalProperties: false,
       },
     },
   },
@@ -262,7 +298,101 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
     const j = await r.json();
     return j;
   }
+  if (name === "run_backtest") {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/bot-backtest`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${args._user_jwt}` },
+      body: JSON.stringify({
+        market_ids: args.market_ids,
+        lookback_days: args.lookback_days || 30,
+        strategy: args.strategy || "mean_reversion",
+      }),
+    });
+    const j = await r.json();
+    if (!r.ok) return { error: j?.error || "backtest failed" };
+    return {
+      total_pnl: j.aggregate?.total_pnl,
+      trade_count: j.aggregate?.trade_count,
+      win_rate: j.aggregate?.win_rate,
+      max_drawdown: j.aggregate?.max_drawdown,
+      sharpe: j.aggregate?.sharpe,
+      per_market: j.per_market?.map((m: any) => ({ name: m.name, final_pnl: m.final_pnl, trades: m.trades?.length })),
+    };
+  }
+  if (name === "suggest_hedges") {
+    const { data: positions } = await supabase
+      .from("positions")
+      .select("id,yes_shares,no_shares,contract:contracts(id,kind,reserve_yes,reserve_no,market:markets(id,name,category,data_source_id))")
+      .eq("user_id", userId);
+    const open = (positions || []).filter((p: any) => Number(p.yes_shares) > 0 || Number(p.no_shares) > 0);
+    if (open.length < 2) return { suggestions: [], note: "Need at least 2 open positions to suggest hedges." };
+
+    // Pull last 30d data for each unique market
+    const marketIds = [...new Set(open.map((p: any) => p.contract.market.id))];
+    const since = new Date(Date.now() - 30 * 86400000).toISOString();
+    const seriesByMarket: Record<string, number[]> = {};
+    for (const mid of marketIds) {
+      const { data: pts } = await supabase.from("market_data_points")
+        .select("value").eq("market_id", mid).gt("ts", since)
+        .order("ts", { ascending: true }).limit(500);
+      seriesByMarket[mid] = (pts || []).map((p: any) => Number(p.value));
+    }
+
+    const correlations: any[] = [];
+    for (let i = 0; i < marketIds.length; i++) {
+      for (let j = i + 1; j < marketIds.length; j++) {
+        const a = seriesByMarket[marketIds[i]];
+        const b = seriesByMarket[marketIds[j]];
+        const c = pearson(a, b);
+        if (c !== null) correlations.push({ a: marketIds[i], b: marketIds[j], corr: c });
+      }
+    }
+    correlations.sort((x, y) => Math.abs(y.corr) - Math.abs(x.corr));
+
+    const suggestions = correlations.slice(0, 3).map((c) => {
+      const posA = open.find((p: any) => p.contract.market.id === c.a);
+      const posB = open.find((p: any) => p.contract.market.id === c.b);
+      const netA = Number(posA.yes_shares) - Number(posA.no_shares);
+      const netB = Number(posB.yes_shares) - Number(posB.no_shares);
+      const sameDirection = (netA > 0 && netB > 0) || (netA < 0 && netB < 0);
+      const correlated = c.corr > 0.5;
+      const isCorrelatedBet = sameDirection && correlated;
+      return {
+        markets: [posA.contract.market.name, posB.contract.market.name],
+        correlation: Math.round(c.corr * 100) / 100,
+        is_correlated_bet: isCorrelatedBet,
+        suggestion: isCorrelatedBet
+          ? `These are positively correlated (${c.corr.toFixed(2)}) and you're long-biased on both. Consider reducing one OR taking an opposite-side position on the smaller one to hedge.`
+          : `Correlation ${c.corr.toFixed(2)}. Current sides already provide partial offset.`,
+      };
+    });
+    return { suggestions, total_correlations_checked: correlations.length };
+  }
+  if (name === "reset_paper_balance") {
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/reset-paper-balance`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${args._user_jwt}` },
+    });
+    const j = await r.json();
+    return j;
+  }
   return { error: `unknown tool ${name}` };
+}
+
+function pearson(a: number[], b: number[]): number | null {
+  const n = Math.min(a.length, b.length);
+  if (n < 5) return null;
+  const ax = a.slice(-n), bx = b.slice(-n);
+  const ma = ax.reduce((x, y) => x + y, 0) / n;
+  const mb = bx.reduce((x, y) => x + y, 0) / n;
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < n; i++) {
+    num += (ax[i] - ma) * (bx[i] - mb);
+    da += (ax[i] - ma) ** 2;
+    db += (bx[i] - mb) ** 2;
+  }
+  const denom = Math.sqrt(da * db);
+  return denom > 1e-9 ? num / denom : null;
 }
 
 Deno.serve(async (req) => {
@@ -294,7 +424,7 @@ Deno.serve(async (req) => {
     .order("created_at", { ascending: true })
     .limit(40);
 
-  const systemPrompt = `You are the Caretaker — a financial co-pilot for an "Elastic Trend Markets" trading platform.
+  const systemPrompt = `You are the Caretaker — a financial co-pilot for Driftworks, a markets platform that lets users "trade the drift from trend".
 
 You can chat, plan, set goals, place trades on the user's behalf (with their permission), spin up new live markets, adjust the trading bot, and generate reports. Be concise, specific, and proactive.
 
@@ -421,7 +551,7 @@ Keep messages tight. Use markdown. Lead with insight, then action.`;
             try { args = JSON.parse(tc.function.arguments || "{}"); } catch {}
             if (READ_ONLY_TOOLS.has(name)) {
               send({ type: "tool_call", id: tc.id, name, status: "running" });
-              const res = await execTool(supabase, user.id, name, args);
+              const res = await execTool(supabase, user.id, name, { ...args, _user_jwt: jwt });
               executedResults.push({ id: tc.id, name, res });
               send({ type: "tool_call", id: tc.id, name, status: "done" });
             } else if (MUTATING_TOOLS.has(name)) {

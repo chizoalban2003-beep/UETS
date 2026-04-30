@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      assessment_attempts: {
+        Row: {
+          created_at: string
+          details: Json
+          id: string
+          passed: boolean
+          score: number
+          stage: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          details?: Json
+          id?: string
+          passed: boolean
+          score: number
+          stage: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          details?: Json
+          id?: string
+          passed?: boolean
+          score?: number
+          stage?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       bot_suggestions: {
         Row: {
           confidence: number
@@ -537,6 +567,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_capital_eligibility: {
+        Row: {
+          eligible: boolean
+          notes: string | null
+          quiz_passed_at: string | null
+          sim_passed_at: string | null
+          tier: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          eligible?: boolean
+          notes?: string | null
+          quiz_passed_at?: string | null
+          sim_passed_at?: string | null
+          tier?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          eligible?: boolean
+          notes?: string | null
+          quiz_passed_at?: string | null
+          sim_passed_at?: string | null
+          tier?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_goals: {
         Row: {
