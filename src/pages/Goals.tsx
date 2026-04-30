@@ -27,7 +27,7 @@ import { Target, Plus, Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatNum } from "@/lib/trend";
 
-type GoalStatus = "active" | "paused" | "achieved" | "abandoned";
+type GoalStatus = "active" | "achieved" | "failed" | "cancelled";
 type Goal = {
   id: string;
   user_id: string;
@@ -42,9 +42,9 @@ type Goal = {
 
 const STATUS_VARIANT: Record<GoalStatus, "default" | "secondary" | "outline" | "destructive"> = {
   active: "default",
-  paused: "secondary",
   achieved: "outline",
-  abandoned: "destructive",
+  failed: "destructive",
+  cancelled: "secondary",
 };
 
 export default function Goals() {
@@ -290,9 +290,9 @@ export default function Goals() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="paused">Paused</SelectItem>
                         <SelectItem value="achieved">Achieved</SelectItem>
-                        <SelectItem value="abandoned">Abandoned</SelectItem>
+                        <SelectItem value="failed">Failed</SelectItem>
+                        <SelectItem value="cancelled">Cancelled</SelectItem>
                       </SelectContent>
                     </Select>
                     <Button
