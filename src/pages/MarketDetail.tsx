@@ -89,7 +89,10 @@ export default function MarketDetail() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
-          <div className="text-xs text-muted-foreground uppercase tracking-wider">{market.category || "general"}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider">{market.category || "general"}</div>
+            {dataSource && <DataSourceBadge size="xs" />}
+          </div>
           <h1 className="text-3xl font-semibold tracking-tight mt-1">{market.name}</h1>
           {market.description && <p className="text-sm text-muted-foreground mt-2 max-w-2xl">{market.description}</p>}
         </div>
@@ -99,6 +102,34 @@ export default function MarketDetail() {
           <div className="text-xs text-muted-foreground mt-1">resolves {format(new Date(market.resolution_at), "PP")}</div>
         </div>
       </div>
+
+      {dataSource && (
+        <Card className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-md bg-bull/10 flex items-center justify-center">
+              <Radio className="w-4 h-4 text-bull" />
+            </div>
+            <div>
+              <div className="text-sm font-medium">
+                {dataSource.kind === "provider"
+                  ? `Live from ${PROVIDER_LABELS[dataSource.provider as keyof typeof PROVIDER_LABELS] || dataSource.provider}`
+                  : "Custom URL oracle"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Updates every {dataSource.fetch_interval_minutes} min ·{" "}
+                {dataSource.last_fetched_at
+                  ? `last ${formatDistanceToNow(new Date(dataSource.last_fetched_at), { addSuffix: true })}`
+                  : "awaiting first fetch"}
+              </div>
+            </div>
+          </div>
+          {dataSource.last_error && (
+            <div className="flex items-center gap-1 text-xs text-bear">
+              <AlertCircle className="w-3 h-3" /> {dataSource.last_error}
+            </div>
+          )}
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Chart + stats */}
