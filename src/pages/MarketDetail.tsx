@@ -7,10 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { buildBandSeries, distortion, ammPriceYes, ammQuoteBuy, formatNum } from "@/lib/trend";
+import { PROVIDER_LABELS } from "@/lib/providers";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import DataSourceBadge from "@/components/DataSourceBadge";
+import { Radio, AlertCircle } from "lucide-react";
 
 type Market = any;
 type Contract = any;
@@ -23,6 +26,7 @@ export default function MarketDetail() {
   const [points, setPoints] = useState<{ ts: number; value: number }[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [positions, setPositions] = useState<Record<string, Position>>({});
+  const [dataSource, setDataSource] = useState<any>(null);
   const [resolveValue, setResolveValue] = useState("");
 
   const load = useCallback(async () => {
@@ -35,6 +39,12 @@ export default function MarketDetail() {
     setMarket(m);
     setPoints((pts || []).map((p) => ({ ts: new Date(p.ts).getTime(), value: Number(p.value) })));
     setContracts(cts || []);
+    if (m?.data_source_id) {
+      const { data: ds } = await supabase.from("data_sources").select("*").eq("id", m.data_source_id).maybeSingle();
+      setDataSource(ds);
+    } else {
+      setDataSource(null);
+    }
     if (user && cts) {
       const { data: pos } = await supabase
         .from("positions")
@@ -51,12 +61,13 @@ export default function MarketDetail() {
     load();
   }, [load]);
 
-  // Realtime contracts (so prices update live)
+  // Realtime contracts (so prices update live) + new data points
   useEffect(() => {
     if (!id) return;
     const ch = supabase
       .channel(`market-${id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "contracts", filter: `market_id=eq.${id}` }, load)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "market_data_points", filter: `market_id=eq.${id}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [id, load]);
@@ -79,7 +90,10 @@ export default function MarketDetail() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
-          <div className="text-xs text-muted-foreground uppercase tracking-wider">{market.category || "general"}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xs text-muted-foreground uppercase tracking-wider">{market.category || "general"}</div>
+            {dataSource && <DataSourceBadge size="xs" />}
+          </div>
           <h1 className="text-3xl font-semibold tracking-tight mt-1">{market.name}</h1>
           {market.description && <p className="text-sm text-muted-foreground mt-2 max-w-2xl">{market.description}</p>}
         </div>
@@ -89,6 +103,34 @@ export default function MarketDetail() {
           <div className="text-xs text-muted-foreground mt-1">resolves {format(new Date(market.resolution_at), "PP")}</div>
         </div>
       </div>
+
+      {dataSource && (
+        <Card className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-md bg-bull/10 flex items-center justify-center">
+              <Radio className="w-4 h-4 text-bull" />
+            </div>
+            <div>
+              <div className="text-sm font-medium">
+                {dataSource.kind === "provider"
+                  ? `Live from ${PROVIDER_LABELS[dataSource.provider as keyof typeof PROVIDER_LABELS] || dataSource.provider}`
+                  : "Custom URL oracle"}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                Updates every {dataSource.fetch_interval_minutes} min ·{" "}
+                {dataSource.last_fetched_at
+                  ? `last ${formatDistanceToNow(new Date(dataSource.last_fetched_at), { addSuffix: true })}`
+                  : "awaiting first fetch"}
+              </div>
+            </div>
+          </div>
+          {dataSource.last_error && (
+            <div className="flex items-center gap-1 text-xs text-bear">
+              <AlertCircle className="w-3 h-3" /> {dataSource.last_error}
+            </div>
+          )}
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-6">
         {/* Chart + stats */}

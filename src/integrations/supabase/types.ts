@@ -170,6 +170,51 @@ export type Database = {
           },
         ]
       }
+      data_sources: {
+        Row: {
+          created_at: string
+          creator_id: string
+          custom_url: string | null
+          fetch_interval_minutes: number
+          id: string
+          json_path: string | null
+          kind: Database["public"]["Enums"]["data_source_kind"]
+          last_error: string | null
+          last_fetched_at: string | null
+          provider: string | null
+          provider_params: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          creator_id: string
+          custom_url?: string | null
+          fetch_interval_minutes?: number
+          id?: string
+          json_path?: string | null
+          kind?: Database["public"]["Enums"]["data_source_kind"]
+          last_error?: string | null
+          last_fetched_at?: string | null
+          provider?: string | null
+          provider_params?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          creator_id?: string
+          custom_url?: string | null
+          fetch_interval_minutes?: number
+          id?: string
+          json_path?: string | null
+          kind?: Database["public"]["Enums"]["data_source_kind"]
+          last_error?: string | null
+          last_fetched_at?: string | null
+          provider?: string | null
+          provider_params?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ledger_entries: {
         Row: {
           amount: number
@@ -242,6 +287,7 @@ export type Database = {
           category: string | null
           created_at: string
           creator_id: string
+          data_source_id: string | null
           description: string | null
           final_value: number | null
           id: string
@@ -260,6 +306,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           creator_id: string
+          data_source_id?: string | null
           description?: string | null
           final_value?: number | null
           id?: string
@@ -278,6 +325,7 @@ export type Database = {
           category?: string | null
           created_at?: string
           creator_id?: string
+          data_source_id?: string | null
           description?: string | null
           final_value?: number | null
           id?: string
@@ -290,7 +338,15 @@ export type Database = {
           unit?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "markets_data_source_id_fkey"
+            columns: ["data_source_id"]
+            isOneToOne: false
+            referencedRelation: "data_sources"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       positions: {
         Row: {
@@ -489,6 +545,35 @@ export type Database = {
           category: string | null
           created_at: string
           creator_id: string
+          data_source_id: string | null
+          description: string | null
+          final_value: number | null
+          id: string
+          name: string
+          resolution_at: string
+          resolved_at: string | null
+          status: Database["public"]["Enums"]["market_status"]
+          trend_model: Database["public"]["Enums"]["trend_model"]
+          trend_params: Json
+          unit: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "markets"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      resolve_market_system: {
+        Args: { _final_value: number; _market_id: string }
+        Returns: {
+          band_is_pct: boolean
+          band_width: number
+          category: string | null
+          created_at: string
+          creator_id: string
+          data_source_id: string | null
           description: string | null
           final_value: number | null
           id: string
@@ -514,6 +599,7 @@ export type Database = {
       bot_mode: "off" | "suggest" | "approve" | "auto"
       bot_strategy: "mean_reversion" | "momentum" | "custom"
       contract_kind: "distortion" | "snapback"
+      data_source_kind: "manual" | "provider" | "custom_url"
       ledger_reason:
         | "signup_bonus"
         | "deposit"
@@ -531,7 +617,14 @@ export type Database = {
         | "executed"
         | "expired"
       trade_side: "buy_yes" | "sell_yes" | "buy_no" | "sell_no"
-      trend_model: "linear" | "moving_avg" | "exponential"
+      trend_model:
+        | "linear"
+        | "moving_avg"
+        | "exponential"
+        | "log_linear"
+        | "seasonal"
+        | "bollinger"
+        | "ewma"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -663,6 +756,7 @@ export const Constants = {
       bot_mode: ["off", "suggest", "approve", "auto"],
       bot_strategy: ["mean_reversion", "momentum", "custom"],
       contract_kind: ["distortion", "snapback"],
+      data_source_kind: ["manual", "provider", "custom_url"],
       ledger_reason: [
         "signup_bonus",
         "deposit",
@@ -682,7 +776,15 @@ export const Constants = {
         "expired",
       ],
       trade_side: ["buy_yes", "sell_yes", "buy_no", "sell_no"],
-      trend_model: ["linear", "moving_avg", "exponential"],
+      trend_model: [
+        "linear",
+        "moving_avg",
+        "exponential",
+        "log_linear",
+        "seasonal",
+        "bollinger",
+        "ewma",
+      ],
     },
   },
 } as const

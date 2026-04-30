@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,12 +9,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { buildBandSeries } from "@/lib/trend";
+import { buildBandSeries, TREND_MODEL_LABELS, type TrendModel } from "@/lib/trend";
+import { TEMPLATES, PROVIDER_LABELS, type Template } from "@/lib/providers";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { z } from "zod";
+import { Radio, Upload, Link2, Sparkles, CheckCircle2, AlertCircle } from "lucide-react";
 
-const SAMPLE = `2025-01-01,100
+const SAMPLE_CSV = `2025-01-01,100
 2025-01-08,102
 2025-01-15,105
 2025-01-22,103
@@ -32,15 +36,21 @@ const schema = z.object({
   unit: z.string().trim().max(20).optional(),
 });
 
+type Mode = "template" | "csv" | "custom";
+
 export default function MarketNew() {
   const { user } = useAuth();
   const nav = useNavigate();
+
+  const [mode, setMode] = useState<Mode>("template");
+  const [template, setTemplate] = useState<Template | null>(null);
+
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("dataset");
   const [unit, setUnit] = useState("value");
-  const [csv, setCsv] = useState(SAMPLE);
-  const [model, setModel] = useState<"linear" | "moving_avg" | "exponential">("linear");
+  const [csv, setCsv] = useState(SAMPLE_CSV);
+  const [model, setModel] = useState<TrendModel>("linear");
   const [bandWidth, setBandWidth] = useState(5);
   const [bandIsPct, setBandIsPct] = useState(true);
   const [resolutionAt, setResolutionAt] = useState(() => {
@@ -48,51 +58,254 @@ export default function MarketNew() {
     d.setDate(d.getDate() + 14);
     return d.toISOString().slice(0, 10);
   });
+
+  // Custom URL state
+  const [customUrl, setCustomUrl] = useState("");
+  const [jsonPath, setJsonPath] = useState("");
+  const [fetchInterval, setFetchInterval] = useState(60);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [testing, setTesting] = useState(false);
+
   const [busy, setBusy] = useState(false);
 
-  const points = parseCsv(csv);
-  const series = points.length > 0 ? buildBandSeries(points, model, bandWidth, bandIsPct) : [];
+  const csvPoints = useMemo(() => parseCsv(csv), [csv]);
+  const previewPoints = mode === "csv" ? csvPoints : (testResult?.ok ? syntheticPreview() : []);
+  const series = previewPoints.length ? buildBandSeries(previewPoints, model, bandWidth, bandIsPct) : [];
+
+  const pickTemplate = (t: Template) => {
+    setTemplate(t);
+    setName(t.label);
+    setCategory(t.category);
+    setUnit(t.unit);
+    setModel(t.trend_model);
+    setBandWidth(t.band_width);
+    setBandIsPct(t.band_is_pct);
+    setDescription(t.description);
+    setFetchInterval(t.fetch_interval_minutes);
+  };
+
+  const testFetch = async () => {
+    if (!customUrl.startsWith("https://")) {
+      setTestResult({ ok: false, message: "URL must start with https://" });
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/test-oracle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+        body: JSON.stringify({ url: customUrl, json_path: jsonPath }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setTestResult({ ok: false, message: j.error || "fetch failed" });
+      } else {
+        setTestResult({ ok: true, message: `Got value: ${j.value}` });
+      }
+    } catch (e: any) {
+      setTestResult({ ok: false, message: String(e?.message || e) });
+    }
+    setTesting(false);
+  };
 
   const submit = async () => {
+    if (!user) return toast.error("Sign in first");
     const parsed = schema.safeParse({ name, description, category, unit });
     if (!parsed.success) return toast.error(parsed.error.issues[0].message);
-    if (points.length < 3) return toast.error("Add at least 3 data points");
-    if (!user) return toast.error("Sign in first");
 
     setBusy(true);
-    const { data: market, error } = await supabase
-      .from("markets")
-      .insert({
-        creator_id: user.id,
-        name, description: description || null, category, unit,
-        trend_model: model,
-        band_width: bandWidth, band_is_pct: bandIsPct,
-        resolution_at: new Date(resolutionAt + "T23:59:59Z").toISOString(),
-      })
-      .select()
-      .single();
-    if (error || !market) {
+
+    let dataSourceId: string | null = null;
+
+    try {
+      if (mode === "template" && template) {
+        const { data: ds, error: dsErr } = await supabase
+          .from("data_sources")
+          .insert({
+            creator_id: user.id,
+            kind: "provider",
+            provider: template.provider,
+            provider_params: template.provider_params as any,
+            fetch_interval_minutes: template.fetch_interval_minutes,
+          })
+          .select()
+          .single();
+        if (dsErr || !ds) throw dsErr;
+        dataSourceId = ds.id;
+      } else if (mode === "custom") {
+        if (!testResult?.ok) {
+          setBusy(false);
+          return toast.error("Test the data source first");
+        }
+        const { data: ds, error: dsErr } = await supabase
+          .from("data_sources")
+          .insert({
+            creator_id: user.id,
+            kind: "custom_url",
+            custom_url: customUrl,
+            json_path: jsonPath || null,
+            fetch_interval_minutes: fetchInterval,
+          })
+          .select()
+          .single();
+        if (dsErr || !ds) throw dsErr;
+        dataSourceId = ds.id;
+      } else if (mode === "csv") {
+        if (csvPoints.length < 3) {
+          setBusy(false);
+          return toast.error("Add at least 3 data points");
+        }
+      }
+
+      const { data: market, error } = await supabase
+        .from("markets")
+        .insert({
+          creator_id: user.id,
+          name,
+          description: description || null,
+          category,
+          unit,
+          trend_model: model,
+          band_width: bandWidth,
+          band_is_pct: bandIsPct,
+          resolution_at: new Date(resolutionAt + "T23:59:59Z").toISOString(),
+          data_source_id: dataSourceId,
+        })
+        .select()
+        .single();
+      if (error || !market) throw error;
+
+      // Seed initial data point(s)
+      if (mode === "csv") {
+        const rows = csvPoints.map((p) => ({
+          market_id: market.id,
+          ts: new Date(p.ts).toISOString(),
+          value: p.value,
+        }));
+        await supabase.from("market_data_points").insert(rows);
+      } else {
+        // Trigger an immediate ingest so the new market has at least one live point
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ingest-data`, {
+          method: "POST",
+          headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+        }).catch(() => {});
+      }
+
       setBusy(false);
-      return toast.error(error?.message || "Failed");
+      toast.success("Market created");
+      nav(`/markets/${market.id}`);
+    } catch (e: any) {
+      setBusy(false);
+      toast.error(e?.message || "Failed to create market");
     }
-    const rows = points.map((p) => ({ market_id: market.id, ts: new Date(p.ts).toISOString(), value: p.value }));
-    const { error: pErr } = await supabase.from("market_data_points").insert(rows);
-    setBusy(false);
-    if (pErr) return toast.error(pErr.message);
-    toast.success("Market created");
-    nav(`/markets/${market.id}`);
   };
 
   return (
-    <div className="container py-10 max-w-5xl">
+    <div className="container py-10 max-w-6xl">
       <h1 className="text-3xl font-semibold tracking-tight mb-2">Create a market</h1>
-      <p className="text-muted-foreground text-sm mb-8">Define a trend, set the elasticity band, and let traders price the distortion.</p>
+      <p className="text-muted-foreground text-sm mb-6">
+        Pick a live dataset, plug in a URL, or upload your own. Set the elasticity band — traders price the distortion.
+      </p>
+
+      <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)} className="mb-6">
+        <TabsList className="grid grid-cols-3 max-w-xl">
+          <TabsTrigger value="template" className="gap-2"><Sparkles className="w-4 h-4" /> Template</TabsTrigger>
+          <TabsTrigger value="custom" className="gap-2"><Link2 className="w-4 h-4" /> Custom URL</TabsTrigger>
+          <TabsTrigger value="csv" className="gap-2"><Upload className="w-4 h-4" /> CSV</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="template" className="mt-4">
+          <Card className="p-5">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {TEMPLATES.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => pickTemplate(t)}
+                  className={`text-left p-4 rounded-lg border transition-colors ${
+                    template?.id === t.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="outline" className="text-[10px] py-0 px-1.5">{t.category}</Badge>
+                    <Badge variant="outline" className="text-[10px] py-0 px-1.5 gap-1 border-bull/40 text-bull">
+                      <Radio className="w-3 h-3" /> Live
+                    </Badge>
+                  </div>
+                  <div className="font-medium text-sm">{t.label}</div>
+                  <div className="text-xs text-muted-foreground mt-1">{t.description}</div>
+                  <div className="text-[10px] text-muted-foreground mt-2">
+                    {PROVIDER_LABELS[t.provider]} · every {t.fetch_interval_minutes} min · {TREND_MODEL_LABELS[t.trend_model].label}
+                  </div>
+                </button>
+              ))}
+            </div>
+            {template && (
+              <div className="mt-4 text-xs text-muted-foreground">
+                Selected: <span className="text-foreground font-medium">{template.label}</span> — fill in the resolution date below and create the market.
+              </div>
+            )}
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="custom" className="mt-4">
+          <Card className="p-5 space-y-4">
+            <div className="space-y-2">
+              <Label>HTTPS JSON endpoint</Label>
+              <Input
+                placeholder="https://api.example.com/metric.json"
+                value={customUrl}
+                onChange={(e) => { setCustomUrl(e.target.value); setTestResult(null); }}
+              />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>JSON path to numeric value</Label>
+                <Input
+                  placeholder="e.g. data.price or 0.value"
+                  value={jsonPath}
+                  onChange={(e) => { setJsonPath(e.target.value); setTestResult(null); }}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Fetch interval (minutes)</Label>
+                <Input type="number" min={5} value={fetchInterval} onChange={(e) => setFetchInterval(Math.max(5, Number(e.target.value) || 60))} />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={testFetch} disabled={testing || !customUrl}>
+                {testing ? "Testing…" : "Test fetch"}
+              </Button>
+              {testResult && (
+                <div className={`flex items-center gap-1 text-sm ${testResult.ok ? "text-bull" : "text-bear"}`}>
+                  {testResult.ok ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                  {testResult.message}
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The server will fetch this URL on schedule and extract the number at the given path. Backfill is not possible for arbitrary URLs — the chart fills in over time.
+            </p>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="csv" className="mt-4">
+          <Card className="p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Series — <code className="text-xs">date,value</code> per line</Label>
+              <span className="text-xs text-muted-foreground">{csvPoints.length} points</span>
+            </div>
+            <Textarea rows={10} value={csv} onChange={(e) => setCsv(e.target.value)} className="font-mono-num text-xs" />
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <Card className="p-6 space-y-4">
+        <Card className="p-5 space-y-4">
           <h2 className="font-medium">Basics</h2>
-          <div className="space-y-2"><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. NYC Avg Daily Temperature, Q1 2026" /></div>
-          <div className="space-y-2"><Label>Description</Label><Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What does this market track? How will it resolve?" /></div>
+          <div className="space-y-2"><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. BTC price elastic, Q2 2026" /></div>
+          <div className="space-y-2"><Label>Description</Label><Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} /></div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2"><Label>Category</Label><Input value={category} onChange={(e) => setCategory(e.target.value)} /></div>
             <div className="space-y-2"><Label>Unit</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} /></div>
@@ -100,67 +313,74 @@ export default function MarketNew() {
           <div className="space-y-2"><Label>Resolution date</Label><Input type="date" value={resolutionAt} onChange={(e) => setResolutionAt(e.target.value)} /></div>
         </Card>
 
-        <Card className="p-6 space-y-4">
+        <Card className="p-5 space-y-4">
           <h2 className="font-medium">Trend & elasticity</h2>
           <div className="space-y-2">
             <Label>Trend model</Label>
-            <Select value={model} onValueChange={(v) => setModel(v as typeof model)}>
+            <Select value={model} onValueChange={(v) => setModel(v as TrendModel)}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="linear">Linear regression</SelectItem>
-                <SelectItem value="moving_avg">Moving average</SelectItem>
-                <SelectItem value="exponential">Exponential</SelectItem>
+                {Object.entries(TREND_MODEL_LABELS).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">{TREND_MODEL_LABELS[model].desc}</p>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2"><Label>Band width</Label><Input type="number" step="0.1" value={bandWidth} onChange={(e) => setBandWidth(Number(e.target.value))} /></div>
+            <div className="space-y-2">
+              <Label>Band width</Label>
+              <Input type="number" step="0.1" value={bandWidth} onChange={(e) => setBandWidth(Number(e.target.value))} disabled={model === "bollinger"} />
+              {model === "bollinger" && <p className="text-[10px] text-muted-foreground">Bollinger sets band automatically (±2σ).</p>}
+            </div>
             <div className="space-y-2 flex flex-col">
               <Label>Band as %</Label>
               <div className="flex items-center gap-2 h-10">
-                <Switch checked={bandIsPct} onCheckedChange={setBandIsPct} />
+                <Switch checked={bandIsPct} onCheckedChange={setBandIsPct} disabled={model === "bollinger"} />
                 <span className="text-sm text-muted-foreground">{bandIsPct ? "% of trend" : "absolute"}</span>
               </div>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">The band is the "natural" range. Reality outside it = distortion.</p>
         </Card>
 
-        <Card className="p-6 md:col-span-2 space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-medium">Data series (CSV: <code className="text-xs">date,value</code>)</h2>
-            <span className="text-xs text-muted-foreground">{points.length} point{points.length !== 1 ? "s" : ""}</span>
-          </div>
-          <Textarea rows={8} value={csv} onChange={(e) => setCsv(e.target.value)} className="font-mono-num text-xs" />
-          <div className="h-56 border border-border/60 rounded-md p-2 bg-card/40">
-            {series.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={series}>
-                  <XAxis dataKey="ts" tickFormatter={(t) => new Date(t).toLocaleDateString()} fontSize={10} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis fontSize={10} stroke="hsl(var(--muted-foreground))" domain={["auto", "auto"]} />
-                  <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} labelFormatter={(t) => new Date(t).toLocaleDateString()} />
-                  <Line type="monotone" dataKey="upper" stroke="hsl(var(--primary) / 0.4)" strokeDasharray="4 4" dot={false} />
-                  <Line type="monotone" dataKey="lower" stroke="hsl(var(--primary) / 0.4)" strokeDasharray="4 4" dot={false} />
-                  <Line type="monotone" dataKey="trend" stroke="hsl(var(--accent))" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 2 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Add data above to preview the band</div>
-            )}
-          </div>
-        </Card>
+        {mode === "csv" && (
+          <Card className="p-5 md:col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-medium">Preview</h2>
+              <span className="text-xs text-muted-foreground">{csvPoints.length} points</span>
+            </div>
+            <div className="h-56 border border-border/60 rounded-md p-2 bg-card/40">
+              {series.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={series}>
+                    <XAxis dataKey="ts" tickFormatter={(t) => new Date(t).toLocaleDateString()} fontSize={10} stroke="hsl(var(--muted-foreground))" />
+                    <YAxis fontSize={10} stroke="hsl(var(--muted-foreground))" domain={["auto", "auto"]} />
+                    <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} labelFormatter={(t) => new Date(t).toLocaleDateString()} />
+                    <Line type="monotone" dataKey="upper" stroke="hsl(var(--primary) / 0.4)" strokeDasharray="4 4" dot={false} />
+                    <Line type="monotone" dataKey="lower" stroke="hsl(var(--primary) / 0.4)" strokeDasharray="4 4" dot={false} />
+                    <Line type="monotone" dataKey="trend" stroke="hsl(var(--accent))" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2.5} dot={{ r: 2 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">Add data above to preview the band</div>
+              )}
+            </div>
+          </Card>
+        )}
       </div>
 
       <div className="mt-6 flex justify-end gap-3">
         <Button variant="outline" onClick={() => nav("/markets")}>Cancel</Button>
-        <Button onClick={submit} disabled={busy}>{busy ? "Creating…" : "Create market"}</Button>
+        <Button onClick={submit} disabled={busy || (mode === "template" && !template) || (mode === "custom" && !testResult?.ok)}>
+          {busy ? "Creating…" : "Create market"}
+        </Button>
       </div>
     </div>
   );
 }
 
-function parseCsv(text: string): { ts: number; value: number }[] {
+function parseCsv(text: string) {
   return text
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -173,4 +393,14 @@ function parseCsv(text: string): { ts: number; value: number }[] {
       return { ts, value };
     })
     .filter((p): p is { ts: number; value: number } => p !== null);
+}
+
+// Synthetic single-point preview for live sources before any data arrives
+function syntheticPreview() {
+  const now = Date.now();
+  const out = [];
+  for (let i = 30; i >= 0; i--) {
+    out.push({ ts: now - i * 86400000, value: 100 + Math.sin(i / 3) * 5 + i * 0.3 });
+  }
+  return out;
 }
