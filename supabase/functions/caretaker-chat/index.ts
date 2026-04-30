@@ -496,28 +496,50 @@ Deno.serve(async (req) => {
   await supabase.from("caretaker_messages").insert({ user_id: user.id, role: "user", content: message });
 
   const ctx = await getUserContext(supabase, user.id);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("skill_level,caretaker_mode,display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  const skill = (profile?.skill_level as string) || "beginner";
+  const cmode = (profile?.caretaker_mode as string) || "suggest";
+
   const { data: history } = await supabase.from("caretaker_messages")
     .select("role,content,tool_calls,tool_call_id,result")
     .eq("user_id", user.id)
     .order("created_at", { ascending: true })
     .limit(40);
 
-  const systemPrompt = `You are the Caretaker — a financial co-pilot for Driftworks, a markets platform that lets users "trade the drift from trend".
+  const SKILL_GUIDE: Record<string, string> = {
+    beginner: "User is a beginner. Use plain English. Define jargon the first time you use it. Offer one tiny worked example when proposing a trade. Suggest using `explain_concept` whenever you introduce something new.",
+    intermediate: "User is intermediate. Skip definitions of basic terms (band, distortion, snapback, AMM). Be tighter. Only call `explain_concept` if the user asks why.",
+    advanced: "User is advanced. Be quantitative. Show key numbers (band %, distortion ratio, fee impact). Skip lessons unless asked.",
+  };
 
-You can chat, plan, set goals, place trades on the user's behalf (with their permission), spin up new live markets, adjust the trading bot, and generate reports. Be concise, specific, and proactive.
+  const MODE_GUIDE: Record<string, string> = {
+    teach: "Teach mode: never call mutating tools (place_trade, update_bot_config, etc.). For every market you discuss, explain the setup and walk through what you would consider, but stop short of executing anything.",
+    suggest: "Suggest mode: propose trades by calling `place_trade`. The system will surface an approval card automatically. Always say *why* before the call.",
+    copilot: "Co-pilot mode: you may execute trades inside guardrails (max_position_size, max_daily_loss, enabled_market_ids). The execute layer enforces these. Be decisive but report what you did.",
+    autopilot: "Autopilot mode: full automation within guardrails. Narrate decisions like a flight crew — calm, specific, no questions back.",
+  };
+
+  const systemPrompt = `You are the Caretaker — the always-on co-pilot for Driftworks, a markets platform where users "trade the drift from trend".
+
+You operate across three lifecycle moments for every event: PRE (briefing + plan), DURING (live updates as price/data moves), and POST (recap + lesson). Use \`list_briefings\` if the user asks "what happened" or "what's next".
+
+Skill level: ${skill}. ${SKILL_GUIDE[skill] || SKILL_GUIDE.beginner}
+
+Caretaker mode: ${cmode}. ${MODE_GUIDE[cmode] || MODE_GUIDE.suggest}
 
 Current user state:
 - Cash balance: $${Number(ctx.wallet?.balance || 0).toFixed(2)} (paper trading)
 - Open positions: ${ctx.positions.length}
-- Bot mode: ${ctx.bot?.mode || "off"}; caretaker mode: ${ctx.bot?.caretaker_mode || "assist"}
+- Trading bot strategy: ${ctx.bot?.strategy || "n/a"}; risk caps: max position ${ctx.bot?.max_position_size}, max daily loss ${ctx.bot?.max_daily_loss}
 - Active goals: ${ctx.goals.length ? ctx.goals.map((g: any) => g.title).join(", ") : "none"}
-- Risk caps: max position ${ctx.bot?.max_position_size}, max daily loss ${ctx.bot?.max_daily_loss}
 
-How markets work: each market tracks a real-world series with a "trend" (linear/EWMA/Bollinger/etc.) and an elasticity band. Two contracts per market: DISTORTION (pays out proportional to how far the value ends up outside the band) and SNAPBACK (binary: does it finish inside the band?). Constant-product AMM.
+How markets work: each market tracks a real-world series with a "trend" (linear/EWMA/Bollinger/seasonal/log_linear) and an elasticity band. Two contracts per market: DISTORTION (pays out proportional to how far the value ends up outside the band) and SNAPBACK (binary: does it finish inside the band?). Constant-product AMM with a small fee.
 
-When a tool requires user approval (mode=assist), the system surfaces an approval card automatically — just call the tool and explain what you're trying to do.
-
-Keep messages tight. Use markdown. Lead with insight, then action.`;
+Lead with insight, then action. Keep messages tight. Use markdown.`;
 
   const conv: any[] = [{ role: "system", content: systemPrompt }];
   for (const h of history || []) {
