@@ -7,10 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip, ReferenceLine } from "recharts";
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { buildBandSeries, distortion, ammPriceYes, ammQuoteBuy, formatNum } from "@/lib/trend";
+import { PROVIDER_LABELS } from "@/lib/providers";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import DataSourceBadge from "@/components/DataSourceBadge";
+import { Radio, AlertCircle } from "lucide-react";
 
 type Market = any;
 type Contract = any;
@@ -23,6 +26,7 @@ export default function MarketDetail() {
   const [points, setPoints] = useState<{ ts: number; value: number }[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [positions, setPositions] = useState<Record<string, Position>>({});
+  const [dataSource, setDataSource] = useState<any>(null);
   const [resolveValue, setResolveValue] = useState("");
 
   const load = useCallback(async () => {
