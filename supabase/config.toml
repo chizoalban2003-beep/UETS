@@ -1,1 +1,10 @@
 project_id = "bscilqyqfdpzarnwqvbt"
+
+[functions.ingest-data]
+verify_jwt = false
+
+[functions.auto-resolve]
+verify_jwt = false
+
+[functions.test-oracle]
+verify_jwt = false
