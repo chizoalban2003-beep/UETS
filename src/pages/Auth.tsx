@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Activity } from "lucide-react";
+import { BRAND } from "@/lib/brand";
 
 export default function Auth() {
   const { user } = useAuth();
@@ -54,8 +55,8 @@ export default function Auth() {
             <Activity className="w-5 h-5 text-primary-foreground" />
           </span>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome to ElasticMarkets</h1>
-        <p className="text-sm text-muted-foreground mt-1">Trade the stretch. Hedge the snap-back.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Welcome to {BRAND.name}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{BRAND.tagline}</p>
       </div>
 
       <Card className="p-6">
