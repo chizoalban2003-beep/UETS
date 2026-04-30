@@ -156,6 +156,20 @@ export default function Caretaker() {
               </div>
             </Card>
           ))}
+          {toolStatuses.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {toolStatuses.map((t) => (
+                <Badge key={t.id} variant="outline" className="text-[10px] gap-1">
+                  {t.status === "running" ? (
+                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-2.5 h-2.5 text-bull" />
+                  )}
+                  {t.name}
+                </Badge>
+              ))}
+            </div>
+          )}
           {busy && <div className="text-xs text-muted-foreground flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin" /> thinking…</div>}
         </div>
         <div className="border-t border-border p-3 flex gap-2">
