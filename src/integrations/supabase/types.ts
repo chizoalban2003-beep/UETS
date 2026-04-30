@@ -153,6 +153,42 @@ export type Database = {
         }
         Relationships: []
       }
+      caretaker_events: {
+        Row: {
+          body_md: string
+          created_at: string
+          id: string
+          kind: string
+          market_id: string | null
+          metrics: Json
+          read_at: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body_md: string
+          created_at?: string
+          id?: string
+          kind: string
+          market_id?: string | null
+          metrics?: Json
+          read_at?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          body_md?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          market_id?: string | null
+          metrics?: Json
+          read_at?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       caretaker_messages: {
         Row: {
           approved: boolean | null
@@ -464,23 +500,29 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          caretaker_mode: string
           created_at: string
           display_name: string | null
           id: string
+          skill_level: string
           updated_at: string
         }
         Insert: {
           avatar_url?: string | null
+          caretaker_mode?: string
           created_at?: string
           display_name?: string | null
           id: string
+          skill_level?: string
           updated_at?: string
         }
         Update: {
           avatar_url?: string | null
+          caretaker_mode?: string
           created_at?: string
           display_name?: string | null
           id?: string
+          skill_level?: string
           updated_at?: string
         }
         Relationships: []

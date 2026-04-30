@@ -8,7 +8,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
-const READ_ONLY_TOOLS = new Set(["get_portfolio", "get_market_snapshot", "list_top_markets", "list_goals", "run_backtest", "suggest_hedges"]);
+const READ_ONLY_TOOLS = new Set(["get_portfolio", "get_market_snapshot", "list_top_markets", "list_goals", "run_backtest", "suggest_hedges", "explain_concept", "list_briefings"]);
 const MUTATING_TOOLS = new Set(["place_trade", "create_market_from_template", "update_bot_config", "set_goal", "generate_report", "reset_paper_balance"]);
 
 const TOOLS = [
@@ -167,6 +167,33 @@ const TOOLS = [
         type: "object",
         properties: { rationale: { type: "string" } },
         required: ["rationale"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "explain_concept",
+      description: "Return a focused mini-lesson on a Driftworks concept, adapted to the user's skill level. Use when the user is confused, asks 'why', or when you want to teach alongside a suggestion.",
+      parameters: {
+        type: "object",
+        properties: {
+          concept: { type: "string", description: "e.g. 'band width', 'distortion vs snapback', 'AMM pricing', 'fees', 'hedging', 'mean reversion'" },
+          context_market_id: { type: "string", description: "Optional market id to ground the lesson with concrete numbers." },
+        },
+        required: ["concept"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_briefings",
+      description: "List the user's recent Caretaker event briefings (pre-event, live updates, post-event recaps). Useful when the user asks 'what happened' or 'what's next'.",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number", description: "default 5" } },
+        additionalProperties: false,
       },
     },
   },
@@ -376,9 +403,60 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
     const j = await r.json();
     return j;
   }
+  if (name === "explain_concept") {
+    const lessons: Record<string, { plain: string; mid: string; deep: string }> = {
+      "band width": {
+        plain: "Every market has a 'normal range' around its trend line — the band. As long as price stays inside, the snap-back contract pays out. Wider bands = harder to break out.",
+        mid: "Band width is the half-width of the no-distortion zone around the trend (linear/EWMA/Bollinger). If `band_is_pct`, it's a % of the trend value; otherwise an absolute distance.",
+        deep: "At resolution, distortion = clamp((|final − trend| − band) / (2·band), 0, 1). Snapback YES pays 1 iff |final − trend| ≤ band, else 0.",
+      },
+      "distortion vs snapback": {
+        plain: "Two contracts per market. Snapback is a yes/no bet that price stays in the band. Distortion pays more the further price ends up outside the band.",
+        mid: "Snapback YES = binary inside-band payout. Distortion YES = linear payout in the [0,1] distortion ratio. They are NOT the same direction trade.",
+        deep: "Pricing both off the same constant-product AMM lets you express two views: variance (snapback NO) and tail size (distortion YES). Combine to build straddle/strangle analogs.",
+      },
+      "amm pricing": {
+        plain: "Price is set by a pool of YES and NO shares. Buying YES drains YES from the pool, making YES more expensive. Like a Uniswap pool but for one market outcome.",
+        mid: "x·y = k constant-product. Implied prob_yes = reserve_no / (reserve_yes + reserve_no). Slippage scales with trade size relative to liquidity.",
+        deep: "For shares Δ on YES side: new_yes = reserve_yes − Δ, new_no = k/new_yes, cost = new_no − reserve_no. Effective price = cost / Δ. Fee taken on |gross|.",
+      },
+      "fees": {
+        plain: "Each trade pays a small fee (1% by default) to discourage churn. It comes out of your cost on buys and your payout on sells.",
+        mid: "fee_bps default 100 (1%). Applied as |gross| × fee_bps/10000. Round-trip cost is ~2% before P&L.",
+        deep: "Edge needed = 2·fee + slippage. For high-frequency mean-reversion this often exceeds the actual mean-reversion alpha; size up or trade less.",
+      },
+      "hedging": {
+        plain: "If two markets move together, holding YES on both doubles your risk. A hedge is taking the opposite side on the smaller one to flatten total exposure.",
+        mid: "Pearson-correlate held markets' price series. If |corr| > 0.5 and you're net-long both, opposite-side or distortion NO on the lower-conviction one cuts net exposure.",
+        deep: "Beta-weight by position size and 30d realized vol. Optimal hedge ratio h* = ρ·σ_a/σ_b. Caretaker's `suggest_hedges` ranks pairs by |corr| but not yet by h*.",
+      },
+      "mean reversion": {
+        plain: "Bet that things stretched far from normal will snap back. Works in calm markets, fails when the trend itself is shifting.",
+        mid: "Buy snapback YES when |z-score| is high but momentum is decaying. Avoid when band is widening or trend slope is changing sign.",
+        deep: "Edge = E[reversion] · P(no regime change) − fees − slippage. Decay constant matters: EWMA bands adapt faster than linear, raising false-positive rate.",
+      },
+    };
+    const key = String(args.concept || "").toLowerCase();
+    const lesson = lessons[key];
+    if (!lesson) return { concept: args.concept, body: `No prepared lesson for "${args.concept}". Ask me in plain English and I'll explain.` };
+    let context_md = "";
+    if (args.context_market_id) {
+      const { data: m } = await supabase.from("markets").select("name,band_width,band_is_pct").eq("id", args.context_market_id).maybeSingle();
+      if (m) context_md = `Grounded for **${m.name}**: band ${m.band_is_pct ? `${m.band_width}%` : m.band_width}.`;
+    }
+    return { concept: args.concept, plain: lesson.plain, intermediate: lesson.mid, advanced: lesson.deep, context: context_md };
+  }
+  if (name === "list_briefings") {
+    const { data } = await supabase
+      .from("caretaker_events")
+      .select("id,kind,title,body_md,market_id,created_at,read_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(args.limit || 5);
+    return { briefings: data || [] };
+  }
   return { error: `unknown tool ${name}` };
 }
-
 function pearson(a: number[], b: number[]): number | null {
   const n = Math.min(a.length, b.length);
   if (n < 5) return null;
@@ -418,28 +496,50 @@ Deno.serve(async (req) => {
   await supabase.from("caretaker_messages").insert({ user_id: user.id, role: "user", content: message });
 
   const ctx = await getUserContext(supabase, user.id);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("skill_level,caretaker_mode,display_name")
+    .eq("id", user.id)
+    .maybeSingle();
+  const skill = (profile?.skill_level as string) || "beginner";
+  const cmode = (profile?.caretaker_mode as string) || "suggest";
+
   const { data: history } = await supabase.from("caretaker_messages")
     .select("role,content,tool_calls,tool_call_id,result")
     .eq("user_id", user.id)
     .order("created_at", { ascending: true })
     .limit(40);
 
-  const systemPrompt = `You are the Caretaker — a financial co-pilot for Driftworks, a markets platform that lets users "trade the drift from trend".
+  const SKILL_GUIDE: Record<string, string> = {
+    beginner: "User is a beginner. Use plain English. Define jargon the first time you use it. Offer one tiny worked example when proposing a trade. Suggest using `explain_concept` whenever you introduce something new.",
+    intermediate: "User is intermediate. Skip definitions of basic terms (band, distortion, snapback, AMM). Be tighter. Only call `explain_concept` if the user asks why.",
+    advanced: "User is advanced. Be quantitative. Show key numbers (band %, distortion ratio, fee impact). Skip lessons unless asked.",
+  };
 
-You can chat, plan, set goals, place trades on the user's behalf (with their permission), spin up new live markets, adjust the trading bot, and generate reports. Be concise, specific, and proactive.
+  const MODE_GUIDE: Record<string, string> = {
+    teach: "Teach mode: never call mutating tools (place_trade, update_bot_config, etc.). For every market you discuss, explain the setup and walk through what you would consider, but stop short of executing anything.",
+    suggest: "Suggest mode: propose trades by calling `place_trade`. The system will surface an approval card automatically. Always say *why* before the call.",
+    copilot: "Co-pilot mode: you may execute trades inside guardrails (max_position_size, max_daily_loss, enabled_market_ids). The execute layer enforces these. Be decisive but report what you did.",
+    autopilot: "Autopilot mode: full automation within guardrails. Narrate decisions like a flight crew — calm, specific, no questions back.",
+  };
+
+  const systemPrompt = `You are the Caretaker — the always-on co-pilot for Driftworks, a markets platform where users "trade the drift from trend".
+
+You operate across three lifecycle moments for every event: PRE (briefing + plan), DURING (live updates as price/data moves), and POST (recap + lesson). Use \`list_briefings\` if the user asks "what happened" or "what's next".
+
+Skill level: ${skill}. ${SKILL_GUIDE[skill] || SKILL_GUIDE.beginner}
+
+Caretaker mode: ${cmode}. ${MODE_GUIDE[cmode] || MODE_GUIDE.suggest}
 
 Current user state:
 - Cash balance: $${Number(ctx.wallet?.balance || 0).toFixed(2)} (paper trading)
 - Open positions: ${ctx.positions.length}
-- Bot mode: ${ctx.bot?.mode || "off"}; caretaker mode: ${ctx.bot?.caretaker_mode || "assist"}
+- Trading bot strategy: ${ctx.bot?.strategy || "n/a"}; risk caps: max position ${ctx.bot?.max_position_size}, max daily loss ${ctx.bot?.max_daily_loss}
 - Active goals: ${ctx.goals.length ? ctx.goals.map((g: any) => g.title).join(", ") : "none"}
-- Risk caps: max position ${ctx.bot?.max_position_size}, max daily loss ${ctx.bot?.max_daily_loss}
 
-How markets work: each market tracks a real-world series with a "trend" (linear/EWMA/Bollinger/etc.) and an elasticity band. Two contracts per market: DISTORTION (pays out proportional to how far the value ends up outside the band) and SNAPBACK (binary: does it finish inside the band?). Constant-product AMM.
+How markets work: each market tracks a real-world series with a "trend" (linear/EWMA/Bollinger/seasonal/log_linear) and an elasticity band. Two contracts per market: DISTORTION (pays out proportional to how far the value ends up outside the band) and SNAPBACK (binary: does it finish inside the band?). Constant-product AMM with a small fee.
 
-When a tool requires user approval (mode=assist), the system surfaces an approval card automatically — just call the tool and explain what you're trying to do.
-
-Keep messages tight. Use markdown. Lead with insight, then action.`;
+Lead with insight, then action. Keep messages tight. Use markdown.`;
 
   const conv: any[] = [{ role: "system", content: systemPrompt }];
   for (const h of history || []) {
@@ -452,8 +552,50 @@ Keep messages tight. Use markdown. Lead with insight, then action.`;
     }
   }
 
-  const isAutopilot = ctx.bot?.caretaker_mode === "autopilot";
-  const isReadOnly = ctx.bot?.caretaker_mode === "chat";
+  // New caretaker_mode (profiles): teach | suggest | copilot | autopilot.
+  // Map to behavior:
+  //   teach     → tools restricted to read-only; mutating calls are converted to lessons.
+  //   suggest   → mutating tools become approval cards (default).
+  //   copilot   → mutating tools auto-execute IF within bot guardrails; else fall back to approval.
+  //   autopilot → mutating tools auto-execute IF within guardrails; else silently skipped + journaled.
+  const isTeach = cmode === "teach";
+  const isCopilot = cmode === "copilot";
+  const isAutopilot = cmode === "autopilot";
+  const guardCaps = {
+    max_position_size: Number(ctx.bot?.max_position_size || 0),
+    max_daily_loss: Number(ctx.bot?.max_daily_loss || 0),
+    enabled_market_ids: (ctx.bot?.enabled_market_ids || []) as string[],
+  };
+
+  // Compute today's realized loss (negative cost flows from bot trades) for max_daily_loss check.
+  const sinceMidnight = new Date(); sinceMidnight.setHours(0, 0, 0, 0);
+  const { data: todaysTrades } = await supabase
+    .from("trades")
+    .select("side,cost,fee,by_bot,created_at")
+    .eq("user_id", user.id)
+    .gte("created_at", sinceMidnight.toISOString());
+  const realizedToday = (todaysTrades || []).reduce((acc: number, t: any) => {
+    return acc + (t.side?.startsWith("sell") ? Number(t.cost) : -Number(t.cost) - Number(t.fee || 0));
+  }, 0);
+
+  // Check whether a mutating tool call is within guardrails. Returns null if OK, or a reason string.
+  async function violatesGuardrails(name: string, args: any): Promise<string | null> {
+    if (name !== "place_trade") return null; // only place_trade hits position/loss caps
+    if (guardCaps.max_position_size && Number(args.shares) > guardCaps.max_position_size) {
+      return `shares ${args.shares} > max_position_size ${guardCaps.max_position_size}`;
+    }
+    if (guardCaps.max_daily_loss && realizedToday < -Math.abs(guardCaps.max_daily_loss)) {
+      return `daily loss cap reached (${realizedToday.toFixed(2)} ≤ -${guardCaps.max_daily_loss})`;
+    }
+    if (guardCaps.enabled_market_ids?.length) {
+      // resolve contract → market
+      const { data: c } = await supabase.from("contracts").select("market_id").eq("id", args.contract_id).maybeSingle();
+      if (c && !guardCaps.enabled_market_ids.includes(c.market_id)) {
+        return `market not in enabled_market_ids`;
+      }
+    }
+    return null;
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -470,7 +612,7 @@ Keep messages tight. Use markdown. Lead with insight, then action.`;
             body: JSON.stringify({
               model: "google/gemini-3-flash-preview",
               messages: conv,
-              tools: isReadOnly ? TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)) : TOOLS,
+              tools: isTeach ? TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)) : TOOLS,
               stream: true,
             }),
           });
@@ -555,14 +697,43 @@ Keep messages tight. Use markdown. Lead with insight, then action.`;
               executedResults.push({ id: tc.id, name, res });
               send({ type: "tool_call", id: tc.id, name, status: "done" });
             } else if (MUTATING_TOOLS.has(name)) {
-              if (isReadOnly) {
-                executedResults.push({ id: tc.id, name, res: { error: "Caretaker is in chat-only mode; cannot execute actions." } });
-              } else if (isAutopilot) {
-                send({ type: "tool_call", id: tc.id, name, status: "running" });
-                const res = await execTool(supabase, user.id, name, { ...args, _user_jwt: jwt });
-                executedResults.push({ id: tc.id, name, res });
-                send({ type: "tool_call", id: tc.id, name, status: "done" });
+              if (isTeach) {
+                executedResults.push({ id: tc.id, name, res: { error: "Caretaker is in Teach mode — describe the trade as a lesson instead of executing it." } });
+              } else if (isCopilot || isAutopilot) {
+                const violation = await violatesGuardrails(name, args);
+                if (violation) {
+                  if (isAutopilot) {
+                    // Silently skip + journal it
+                    await supabase.from("caretaker_events").insert({
+                      user_id: user.id,
+                      market_id: null,
+                      kind: "action_taken",
+                      title: `Skipped ${name}`,
+                      body_md: `Autopilot skipped a proposed \`${name}\` because: ${violation}.`,
+                      metrics: { args, violation },
+                    });
+                    executedResults.push({ id: tc.id, name, res: { skipped: true, reason: violation } });
+                  } else {
+                    // Co-pilot: fall back to approval
+                    pendingApprovals.push({ id: tc.id, name, args, guardrail_warning: violation });
+                  }
+                } else {
+                  send({ type: "tool_call", id: tc.id, name, status: "running" });
+                  const res = await execTool(supabase, user.id, name, { ...args, _user_jwt: jwt });
+                  executedResults.push({ id: tc.id, name, res });
+                  send({ type: "tool_call", id: tc.id, name, status: "done" });
+                  // Journal the action
+                  await supabase.from("caretaker_events").insert({
+                    user_id: user.id,
+                    market_id: null,
+                    kind: "action_taken",
+                    title: `${cmode === "autopilot" ? "Autopilot" : "Co-pilot"} ran ${name}`,
+                    body_md: `Executed \`${name}\` with args \`${JSON.stringify(args).slice(0, 240)}\`.`,
+                    metrics: { args, result: res },
+                  });
+                }
               } else {
+                // Suggest mode (default)
                 pendingApprovals.push({ id: tc.id, name, args });
               }
             } else {
