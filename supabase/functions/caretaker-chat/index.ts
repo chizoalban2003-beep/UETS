@@ -8,7 +8,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
-const READ_ONLY_TOOLS = new Set(["get_portfolio", "get_market_snapshot", "list_top_markets", "list_goals", "run_backtest", "suggest_hedges"]);
+const READ_ONLY_TOOLS = new Set(["get_portfolio", "get_market_snapshot", "list_top_markets", "list_goals", "run_backtest", "suggest_hedges", "explain_concept", "list_briefings"]);
 const MUTATING_TOOLS = new Set(["place_trade", "create_market_from_template", "update_bot_config", "set_goal", "generate_report", "reset_paper_balance"]);
 
 const TOOLS = [
