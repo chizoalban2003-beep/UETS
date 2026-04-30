@@ -388,6 +388,39 @@ export type Database = {
           },
         ]
       }
+      market_disputes: {
+        Row: {
+          bond: number
+          created_at: string
+          id: string
+          market_id: string
+          raised_by: string
+          reason: string
+          resolved_at: string | null
+          status: string
+        }
+        Insert: {
+          bond: number
+          created_at?: string
+          id?: string
+          market_id: string
+          raised_by: string
+          reason: string
+          resolved_at?: string | null
+          status?: string
+        }
+        Update: {
+          bond?: number
+          created_at?: string
+          id?: string
+          market_id?: string
+          raised_by?: string
+          reason?: string
+          resolved_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       markets: {
         Row: {
           band_is_pct: boolean
@@ -395,14 +428,20 @@ export type Database = {
           category: string | null
           created_at: string
           creator_id: string
+          creator_stake: number
           data_source_id: string | null
           description: string | null
+          fees_accrued: number
+          final_posted_at: string | null
           final_value: number | null
           id: string
           name: string
+          payout_claimed_at: string | null
           resolution_at: string
           resolved_at: string | null
+          rules_md: string
           status: Database["public"]["Enums"]["market_status"]
+          submitted_at: string | null
           trend_model: Database["public"]["Enums"]["trend_model"]
           trend_params: Json
           unit: string | null
@@ -414,14 +453,20 @@ export type Database = {
           category?: string | null
           created_at?: string
           creator_id: string
+          creator_stake?: number
           data_source_id?: string | null
           description?: string | null
+          fees_accrued?: number
+          final_posted_at?: string | null
           final_value?: number | null
           id?: string
           name: string
+          payout_claimed_at?: string | null
           resolution_at: string
           resolved_at?: string | null
+          rules_md?: string
           status?: Database["public"]["Enums"]["market_status"]
+          submitted_at?: string | null
           trend_model?: Database["public"]["Enums"]["trend_model"]
           trend_params?: Json
           unit?: string | null
@@ -433,14 +478,20 @@ export type Database = {
           category?: string | null
           created_at?: string
           creator_id?: string
+          creator_stake?: number
           data_source_id?: string | null
           description?: string | null
+          fees_accrued?: number
+          final_posted_at?: string | null
           final_value?: number | null
           id?: string
           name?: string
+          payout_claimed_at?: string | null
           resolution_at?: string
           resolved_at?: string | null
+          rules_md?: string
           status?: Database["public"]["Enums"]["market_status"]
+          submitted_at?: string | null
           trend_model?: Database["public"]["Enums"]["trend_model"]
           trend_params?: Json
           unit?: string | null
@@ -765,14 +816,20 @@ export type Database = {
           category: string | null
           created_at: string
           creator_id: string
+          creator_stake: number
           data_source_id: string | null
           description: string | null
+          fees_accrued: number
+          final_posted_at: string | null
           final_value: number | null
           id: string
           name: string
+          payout_claimed_at: string | null
           resolution_at: string
           resolved_at: string | null
+          rules_md: string
           status: Database["public"]["Enums"]["market_status"]
+          submitted_at: string | null
           trend_model: Database["public"]["Enums"]["trend_model"]
           trend_params: Json
           unit: string | null
@@ -793,14 +850,20 @@ export type Database = {
           category: string | null
           created_at: string
           creator_id: string
+          creator_stake: number
           data_source_id: string | null
           description: string | null
+          fees_accrued: number
+          final_posted_at: string | null
           final_value: number | null
           id: string
           name: string
+          payout_claimed_at: string | null
           resolution_at: string
           resolved_at: string | null
+          rules_md: string
           status: Database["public"]["Enums"]["market_status"]
+          submitted_at: string | null
           trend_model: Database["public"]["Enums"]["trend_model"]
           trend_params: Json
           unit: string | null
@@ -832,7 +895,21 @@ export type Database = {
         | "fee"
         | "bot_action"
         | "adjustment"
-      market_status: "open" | "resolving" | "resolved"
+        | "creator_stake"
+        | "creator_stake_refund"
+        | "creator_payout"
+        | "dispute_bond"
+        | "dispute_refund"
+        | "cancel_refund"
+      market_status:
+        | "open"
+        | "resolving"
+        | "resolved"
+        | "draft"
+        | "pending_review"
+        | "pending_resolution"
+        | "disputable"
+        | "cancelled"
       report_kind: "daily" | "weekly" | "monthly" | "on_demand"
       suggestion_status:
         | "pending"
@@ -993,8 +1070,23 @@ export const Constants = {
         "fee",
         "bot_action",
         "adjustment",
+        "creator_stake",
+        "creator_stake_refund",
+        "creator_payout",
+        "dispute_bond",
+        "dispute_refund",
+        "cancel_refund",
       ],
-      market_status: ["open", "resolving", "resolved"],
+      market_status: [
+        "open",
+        "resolving",
+        "resolved",
+        "draft",
+        "pending_review",
+        "pending_resolution",
+        "disputable",
+        "cancelled",
+      ],
       report_kind: ["daily", "weekly", "monthly", "on_demand"],
       suggestion_status: [
         "pending",
