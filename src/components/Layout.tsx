@@ -1,10 +1,13 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Activity, LayoutGrid, Plus, Wallet, Bot, LogOut, LogIn, Sparkles, FileText, Target } from "lucide-react";
+import { Waves, LayoutGrid, Plus, Wallet, Bot, LogOut, LogIn, Sparkles, FileText, Target, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import CaretakerDock from "@/components/CaretakerDock";
+import DemoBadge from "@/components/DemoBadge";
+import OnboardingTour from "@/components/OnboardingTour";
+import { BRAND } from "@/lib/brand";
 
 export default function Layout() {
   const { user, loading } = useAuth();
@@ -43,9 +46,9 @@ export default function Layout() {
         <div className="container flex items-center justify-between h-14 gap-4">
           <Link to="/" className="flex items-center gap-2 font-semibold">
             <span className="w-7 h-7 rounded-md bg-gradient-primary shadow-glow flex items-center justify-center">
-              <Activity className="w-4 h-4 text-primary-foreground" />
+              <Waves className="w-4 h-4 text-primary-foreground" />
             </span>
-            <span className="tracking-tight">Elastic<span className="text-primary">Markets</span></span>
+            <span className="tracking-tight">Drift<span className="text-primary">works</span></span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-1">
@@ -56,9 +59,11 @@ export default function Layout() {
             <NavLink to="/caretaker" className={linkCls}><Sparkles className="w-4 h-4" />Caretaker</NavLink>
             <NavLink to="/goals" className={linkCls}><Target className="w-4 h-4" />Goals</NavLink>
             <NavLink to="/reports" className={linkCls}><FileText className="w-4 h-4" />Reports</NavLink>
+            <NavLink to="/assessment" className={linkCls}><ShieldCheck className="w-4 h-4" />Assessment</NavLink>
           </nav>
 
           <div className="flex items-center gap-3">
+            <DemoBadge />
             {user && balance !== null && (
               <div className="hidden sm:flex flex-col items-end leading-tight">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Balance</span>
@@ -81,10 +86,11 @@ export default function Layout() {
       </main>
 
       <footer className="border-t border-border/60 py-6 text-center text-xs text-muted-foreground">
-        Paper-trading sandbox · Markets resolve manually by their creator · Built on Lovable
+        {BRAND.name} · Paper-trading sandbox tracking real-world data · Real capital after assessment
       </footer>
 
       <CaretakerDock />
+      <OnboardingTour />
     </div>
   );
 }
