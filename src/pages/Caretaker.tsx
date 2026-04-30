@@ -12,6 +12,7 @@ import { Sparkles, Send, CheckCircle2, XCircle, Loader2, RefreshCw } from "lucid
 import { streamCaretaker } from "@/lib/caretakerStream";
 import CaretakerModeSlider, { type CaretakerMode } from "@/components/CaretakerModeSlider";
 import EventBriefingCard, { type CaretakerEvent } from "@/components/EventBriefingCard";
+import CaretakerPersonality from "@/components/CaretakerPersonality";
 
 type Msg = { id: string; role: string; content: string | null; tool_calls?: any; result?: any; pending_approval?: boolean; approved?: boolean | null; tool_call_id?: string | null; streaming?: boolean };
 type Pending = { id: string; name: string; args: any; guardrail_warning?: string };
@@ -180,6 +181,7 @@ export default function Caretaker() {
             Journal
             {events.some((e) => !e.read_at) && <Badge variant="default" className="ml-2 h-5 px-1.5">{events.filter((e) => !e.read_at).length}</Badge>}
           </TabsTrigger>
+          <TabsTrigger value="personality">Personality</TabsTrigger>
         </TabsList>
 
         <TabsContent value="chat" className="mt-4">
@@ -257,6 +259,10 @@ export default function Caretaker() {
           ) : (
             events.map((e) => <EventBriefingCard key={e.id} event={e} />)
           )}
+        </TabsContent>
+
+        <TabsContent value="personality" className="mt-4">
+          <CaretakerPersonality />
         </TabsContent>
       </Tabs>
     </div>

@@ -551,7 +551,10 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          caretaker_language: string
           caretaker_mode: string
+          caretaker_name: string
+          caretaker_voice: string
           created_at: string
           display_name: string | null
           id: string
@@ -560,7 +563,10 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          caretaker_language?: string
           caretaker_mode?: string
+          caretaker_name?: string
+          caretaker_voice?: string
           created_at?: string
           display_name?: string | null
           id: string
@@ -569,7 +575,10 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          caretaker_language?: string
           caretaker_mode?: string
+          caretaker_name?: string
+          caretaker_voice?: string
           created_at?: string
           display_name?: string | null
           id?: string

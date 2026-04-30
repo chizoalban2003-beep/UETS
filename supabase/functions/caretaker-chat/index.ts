@@ -498,11 +498,14 @@ Deno.serve(async (req) => {
   const ctx = await getUserContext(supabase, user.id);
   const { data: profile } = await supabase
     .from("profiles")
-    .select("skill_level,caretaker_mode,display_name")
+    .select("skill_level,caretaker_mode,display_name,caretaker_name,caretaker_voice,caretaker_language")
     .eq("id", user.id)
     .maybeSingle();
   const skill = (profile?.skill_level as string) || "beginner";
   const cmode = (profile?.caretaker_mode as string) || "suggest";
+  const cname = ((profile as any)?.caretaker_name as string) || "Caretaker";
+  const cvoice = ((profile as any)?.caretaker_voice as string) || "calm";
+  const clang = ((profile as any)?.caretaker_language as string) || "en";
 
   const { data: history } = await supabase.from("caretaker_messages")
     .select("role,content,tool_calls,tool_call_id,result")
@@ -523,13 +526,27 @@ Deno.serve(async (req) => {
     autopilot: "Autopilot mode: full automation within guardrails. Narrate decisions like a flight crew — calm, specific, no questions back.",
   };
 
-  const systemPrompt = `You are the Caretaker — the always-on co-pilot for Driftworks, a markets platform where users "trade the drift from trend".
+  const VOICE_GUIDE: Record<string, string> = {
+    calm: "Voice: calm flight-crew cadence. Specific, unhurried, no hedging. One short sentence per beat.",
+    coach: "Voice: warm coach. Encouraging, second-person, end most replies with one short reflective question that helps the user think.",
+    quant: "Voice: terse quant. Numbers first, no emoji, no fluff, no greetings. Bullet points over prose. Round to 2 decimals.",
+    concise: "Voice: concise. Three sentences maximum unless the user explicitly asks to expand. No preamble.",
+  };
+
+  const LANG_NAME: Record<string, string> = { en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese" };
+  const langLabel = LANG_NAME[clang] || "English";
+
+  const systemPrompt = `You are ${cname} — the always-on co-pilot for Driftworks, a markets platform where users "trade the drift from trend". Your role-name is "Caretaker"; your given name is "${cname}". Refer to yourself as ${cname} when introducing yourself.
 
 You operate across three lifecycle moments for every event: PRE (briefing + plan), DURING (live updates as price/data moves), and POST (recap + lesson). Use \`list_briefings\` if the user asks "what happened" or "what's next".
 
 Skill level: ${skill}. ${SKILL_GUIDE[skill] || SKILL_GUIDE.beginner}
 
 Caretaker mode: ${cmode}. ${MODE_GUIDE[cmode] || MODE_GUIDE.suggest}
+
+${VOICE_GUIDE[cvoice] || VOICE_GUIDE.calm}
+
+Reply language: ${langLabel}. Always reply in ${langLabel} regardless of the language the user writes in, unless the user explicitly asks you to switch.
 
 Current user state:
 - Cash balance: $${Number(ctx.wallet?.balance || 0).toFixed(2)} (paper trading)

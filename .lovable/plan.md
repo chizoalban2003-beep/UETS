@@ -1,106 +1,131 @@
-# Creator-Operated Market Lifecycle
+# Polish, personality, and a real login walkthrough
 
-Turn `markets` from "instantly live on insert" into a real lifecycle with creator skin-in-the-game, review, disputes, fee sharing, and a creator dashboard.
+## What you asked, answered first
 
-## Lifecycle states
+### 1. "Some names still show ElasticMarkets"
+I searched the whole codebase. There is exactly **one** literal stale brand string left:
 
-```
-draft → pending_review → open → pending_resolution → disputable → resolved
-                       ↘ cancelled (refunds at cost basis)
-```
+- `src/pages/Auth.tsx` line 57 — `Welcome to ElasticMarkets`
 
-- **draft**: creator editing rules, band, data source. Not visible to others.
-- **pending_review**: stake locked, awaiting auto-checks (data source reachable, rules present, resolution_at in future).
-- **open**: tradeable. AMM seeded from creator stake.
-- **pending_resolution**: `resolution_at` passed, awaiting final value (manual or oracle).
-- **disputable**: 24h window after a final value posted; any holder can raise a dispute (escrows a small bond).
-- **resolved**: payouts done; creator receives 50% of accrued fees minus any upheld dispute slashing.
-- **cancelled**: creator stake returned minus a small penalty; traders refunded at cost basis.
+Everything else (header, footer, landing hero, `<title>`, OG tags, `BRAND` constant) already says **Driftworks**.
 
-## Schema migration
+There is also a second category — the word **"elastic"** used as *product vocabulary*, not as a brand:
+- Landing copy ("The elastic-trend metaphor", "elasticity band", `ElasticDemo` chart)
+- `MarketNew` ("Trend & elasticity", placeholder "BTC price elastic")
+- `index.css` (`--gradient-elastic`, `.bg-gradient-elastic`)
+- `trend.ts` / `providers.ts` comments
 
-Extend enums + add columns + two new tables.
+This is the core mental model of the product (a trend is a stretched elastic; you trade the distortion). I'll **rename only the brand string** and leave the metaphor copy alone unless you tell me to retire it.
 
-```sql
-alter type market_status add value if not exists 'draft';
-alter type market_status add value if not exists 'pending_review';
-alter type market_status add value if not exists 'pending_resolution';
-alter type market_status add value if not exists 'disputable';
-alter type market_status add value if not exists 'cancelled';
+### 2. Does the bot need a name, language, personality?
+Right now the Caretaker has **one fixed voice**, hardcoded in `caretaker-chat/index.ts`:
+> "You are the Caretaker — the always-on co-pilot for Driftworks…"
 
-alter type ledger_reason add value if not exists 'creator_stake';
-alter type ledger_reason add value if not exists 'creator_stake_refund';
-alter type ledger_reason add value if not exists 'creator_payout';
-alter type ledger_reason add value if not exists 'dispute_bond';
-alter type ledger_reason add value if not exists 'dispute_refund';
-alter type ledger_reason add value if not exists 'cancel_refund';
+It already adapts on two axes:
+- **Skill level** (beginner / intermediate / advanced) — controls how much it explains
+- **Mode** (teach / suggest / co-pilot / autopilot) — controls how much it does
 
-alter table public.markets
-  add column if not exists rules_md text not null default '',
-  add column if not exists creator_stake numeric not null default 0,
-  add column if not exists fees_accrued numeric not null default 0,
-  add column if not exists submitted_at timestamptz,
-  add column if not exists final_posted_at timestamptz;
+What it does **not** have:
+- A custom **display name** (always "Caretaker")
+- A **personality preset** (calm flight-crew vs. terse quant vs. friendly coach)
+- A **language preference** (always English)
 
-create table public.market_disputes (
-  id uuid primary key default gen_random_uuid(),
-  market_id uuid not null,
-  raised_by uuid not null,
-  reason text not null,
-  bond numeric not null,
-  status text not null default 'open' check (status in ('open','upheld','rejected')),
-  resolved_at timestamptz,
-  created_at timestamptz not null default now()
-);
-alter table public.market_disputes enable row level security;
-create policy "anyone reads disputes" on public.market_disputes for select using (true);
-create policy "users raise own disputes" on public.market_disputes
-  for insert with check (auth.uid() = raised_by);
+My recommendation: keep "Caretaker" as the **default agentic identity** (it's universal, role-based, and matches the platform metaphor), but let each user **rename it** and pick a **voice preset** + **language**. That gives personality without fragmenting the brand.
+
+### 3. What is the entire platform?
+**Driftworks** is a paper-trading sandbox for **trend-distortion markets**:
+
+```text
+  Real-world dataset  →  Trend model + elasticity band  →  Two contracts per market
+  (price, weather,        (linear / EWMA /                 ┌─ DISTORTION (scalar): how
+   climate, on-chain)      Bollinger / seasonal)           │   far did reality stretch?
+                                                           └─ SNAPBACK   (binary):  did
+                                                               it return inside the band?
+                              ↑                                       ↓
+                       Creator stakes §400+                  AMM (constant-product, fee)
+                       to publish a market           ←  Traders take YES/NO via wallet
+                              ↓                                       ↓
+                       Lifecycle: draft → pending_review →   open  → pending_resolution
+                                  → disputable (24h) → resolved → creator payout (50% fees)
+                              ↓                                       ↓
+                       Caretaker AI co-pilot               Bot (off / suggest / approve / auto)
+                       (teach / suggest / co-pilot /       runs strategies inside guardrails
+                        autopilot, with PRE/DURING/POST    (max position, max daily loss,
+                        event briefings)                    watchlist)
+                              ↓
+                       Assessment → real-capital tier
 ```
 
-Default for new markets switches to `'draft'` (existing rows untouched).
+Major surfaces already shipped: Landing, Auth, Markets list, Market detail (with lifecycle stepper, rules, dispute UI), Create market wizard, **My markets** dashboard, Portfolio, Bot config, Caretaker chat with streaming + tool-calling, Goals, Reports, Backtest, Assessment, onboarding tour, dock.
 
-## DB functions
+### 4. Is it ready to start trading / functioning?
+**Functionally: yes for paper trading.** Auth works, markets resolve automatically, AMM executes, ledger is consistent, RLS is in place, edge functions deploy, real-capital is gated behind the assessment.
 
-- **`submit_market(_market_id, _stake)`**: validates draft, locks `_stake` from wallet (min 400), seeds AMM reserves on both contracts proportional to stake, sets status `pending_review`, then immediately `open` if auto-checks pass.
-- **`cancel_market(_market_id)`**: only by creator while `open` and zero outside trades, OR by system if review fails. Refunds traders at cost basis, returns stake minus 5% penalty.
-- **`raise_dispute(_market_id, _reason)`**: only while `disputable`, escrows 50 from wallet into bond.
-- **`payout_creator(_market_id)`**: called after `resolved`, transfers `fees_accrued * 0.5` to creator + returns stake.
-- Patch **`execute_trade`**: block when `markets.creator_id = auth.uid()` (no self-trading on own staked market) and accumulate `fees_accrued` per trade.
+**Gaps I'd close before calling it "complete":**
 
-## Edge functions
+| Area | Status | Gap |
+|---|---|---|
+| Branding | 95% | `Auth.tsx` still says ElasticMarkets |
+| Caretaker voice | works | no name/persona/language settings |
+| Auth UX | works | Google works, but no password reset, no `/reset-password` page |
+| Email confirmation | on by default | first-time users hit "check your email" — fine, but unmentioned in UI |
+| Real-capital path | demo only | no actual cash-in/out; assessment grants tier but no funding step |
+| Mobile | usable | header nav is desktop-only, no mobile menu |
+| Empty states | partial | new user landing on `/portfolio` or `/markets/mine` has no guidance |
+| Smoke test | unknown | I haven't logged in and clicked through end-to-end yet |
 
-- `supabase/functions/market-submit/index.ts` — wraps `submit_market`, runs data-source reachability check.
-- `supabase/functions/market-cancel/index.ts` — wraps `cancel_market`.
-- `supabase/functions/raise-dispute/index.ts` — wraps `raise_dispute` with rate limit (one open dispute per user per market).
-- `supabase/functions/creator-payout/index.ts` — wraps `payout_creator`.
-- Extend `supabase/functions/auto-resolve/index.ts` to flip `open → pending_resolution` at `resolution_at`, then `pending_resolution → disputable` once final value posted, then `disputable → resolved` after 24h.
+This plan addresses the first three (brand, personality, auth UX smoke test) and **gives you a written gap list** for the rest so you can prioritize.
 
-## Frontend
+---
 
-- **`src/pages/MarketNew.tsx`** (refactor): wizard with steps Basics → Data → Band & Rules → Stake & Review. Saves as `draft`. Final step calls `market-submit`.
-- **`src/pages/MarketsMine.tsx`** (new) at route `/markets/mine`: tabs Drafts / Live / Resolved. Per-row: status pill, fees accrued, stake locked, "Cancel" / "Claim payout" / "Edit draft" actions.
-- **`src/pages/MarketDetail.tsx`** (edit): show rules_md, creator stake badge, lifecycle stepper, "Raise dispute" button while `disputable`, dispute list.
-- **`src/components/MarketLifecycle.tsx`** (new): horizontal stepper used in detail + dashboard.
-- **`src/App.tsx`**: register `/markets/mine` route.
-- **`src/components/Layout.tsx`**: add "My Markets" nav entry for authed users.
+## What I'll do
 
-## Caretaker integration
+### A. Brand cleanup (1 file)
+- `src/pages/Auth.tsx` → `Welcome to Driftworks` + tagline from `BRAND.tagline`
+- Optional, ask first: rename the "elastic-trend metaphor" copy on Landing if you want to drop the word "elastic" entirely. **Default: leave it**, because it's the product's mental model.
 
-- Add `list_my_markets` and `creator_payout` tools to `caretaker-chat` so the bot can surface "you have a market in disputable state" and offer to claim payouts.
-- `caretaker-events` emits a `pre_event`/`post_event` row for markets the user *created* (in addition to ones they hold), tagged with `kind='action_taken'` for auto-claims under autopilot.
+### B. Caretaker personality (DB + 2 files + 1 edge function)
 
-## Out of scope (this pass)
+Add to `profiles` table:
+- `caretaker_name` text default `'Caretaker'`
+- `caretaker_voice` text default `'calm'` (one of: `calm`, `coach`, `quant`, `concise`)
+- `caretaker_language` text default `'en'`
 
-- Multi-LP liquidity; secondary AMM funding only by creator stake for now.
-- Oracle-driven auto-final-value; final value still posted by creator/system as today.
-- Fiat/real-money settlement (still gated by assessment system).
+In `src/pages/Caretaker.tsx` (and `Bot.tsx` panel):
+- Three new fields in the settings card: name input, voice preset selector with one-line previews, language dropdown (en / es / fr / de / pt for now)
+- `CaretakerDock` header reads the custom name
 
-## Implementation order
+In `supabase/functions/caretaker-chat/index.ts`:
+- Read `caretaker_name`, `caretaker_voice`, `caretaker_language` alongside skill+mode
+- Inject into the system prompt: `Your name is ${name}. Voice: ${VOICE_GUIDE[voice]}. Reply in ${language}.`
+- `VOICE_GUIDE`:
+  - **calm** — flight-crew cadence, specific, no hedging (current default)
+  - **coach** — warm, encouraging, asks one reflective question per reply
+  - **quant** — terse, numbers-first, no emoji, no fluff
+  - **concise** — three sentences max unless asked to expand
 
-1. Schema migration.
-2. DB functions + `execute_trade` patch.
-3. Edge functions.
-4. `MarketNew.tsx` wizard + `MarketsMine.tsx` + lifecycle stepper.
-5. `MarketDetail.tsx` dispute UI + Caretaker tool wiring.
-6. Smoke test: create draft → submit → trade as second user → resolve → dispute window → claim payout.
+Universal across the platform: yes — same identity drives the dock, the chat page, briefings, and trade rationales.
+
+### C. Login + seamless smoke test (browser)
+After the build, I'll open the preview, **you click "Continue with Google" once**, then I:
+1. Verify the header shows your balance + Driftworks brand
+2. Open `/markets`, pick one, confirm prices + lifecycle stepper render
+3. Open `/caretaker`, confirm the new name/voice/language settings save and the next reply uses them
+4. Open `/markets/mine` to confirm the creator dashboard loads (empty state ok)
+5. Report what worked and any console/network errors
+
+If Google sign-in trips on the preview domain, I'll fall back to email/password and tell you.
+
+### D. Written "is it ready" report
+At the end, I'll deliver the gap table above with a short recommendation for the next 1–2 build cycles (most likely: mobile nav + password reset + funding step for real capital).
+
+---
+
+## Technical notes
+
+- Migration adds three nullable-with-default columns to `profiles` — no data loss, no RLS change needed (existing policies already cover the row)
+- `types.ts` regenerates automatically after the migration
+- The Caretaker system prompt is composed string-by-string; adding voice/name/language is a 4-line change
+- No new edge functions; no new routes
+- `BRAND.name` already exists, so the Auth fix is one-line
+- Browser smoke test uses `navigate_to_sandbox` after you sign in; I don't have and won't ask for your Google password
