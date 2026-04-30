@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { streamCaretaker } from "@/lib/caretakerStream";
 
 type Msg = {
   id: string;
