@@ -126,7 +126,7 @@ export default function MarketNew() {
             creator_id: user.id,
             kind: "provider",
             provider: template.provider,
-            provider_params: template.provider_params,
+            provider_params: template.provider_params as any,
             fetch_interval_minutes: template.fetch_interval_minutes,
           })
           .select()
