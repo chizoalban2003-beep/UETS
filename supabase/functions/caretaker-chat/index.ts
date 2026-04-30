@@ -8,8 +8,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
-const READ_ONLY_TOOLS = new Set(["get_portfolio", "get_market_snapshot", "list_top_markets", "list_goals"]);
-const MUTATING_TOOLS = new Set(["place_trade", "create_market_from_template", "update_bot_config", "set_goal", "generate_report"]);
+const READ_ONLY_TOOLS = new Set(["get_portfolio", "get_market_snapshot", "list_top_markets", "list_goals", "run_backtest", "suggest_hedges"]);
+const MUTATING_TOOLS = new Set(["place_trade", "create_market_from_template", "update_bot_config", "set_goal", "generate_report", "reset_paper_balance"]);
 
 const TOOLS = [
   {
@@ -131,6 +131,42 @@ const TOOLS = [
         type: "object",
         properties: { days: { type: "number", description: "Lookback in days. Default 7." } },
         additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "run_backtest",
+      description: "Replay how the bot would have performed against historical data on selected markets. Read-only simulation.",
+      parameters: {
+        type: "object",
+        properties: {
+          market_ids: { type: "array", items: { type: "string" } },
+          lookback_days: { type: "number", description: "7-90, default 30" },
+          strategy: { type: "string", enum: ["mean_reversion", "momentum"] },
+        },
+        required: ["market_ids"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "suggest_hedges",
+      description: "Analyze current positions across markets, compute correlations, and propose offsetting trades to reduce correlated exposure. Returns proposals as readable suggestions; the user can ask you to place_trade them after.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "reset_paper_balance",
+      description: "Reset the user's paper-trading wallet back to §10,000 and zero out all open positions. Rate-limited to once per 24h.",
+      parameters: {
+        type: "object",
+        properties: { rationale: { type: "string" } },
+        required: ["rationale"], additionalProperties: false,
       },
     },
   },
