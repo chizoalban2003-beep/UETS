@@ -18,9 +18,11 @@ type Msg = {
   content: string | null;
   tool_calls?: any;
   pending_approval?: boolean;
-  created_at: string;
+  created_at?: string;
+  streaming?: boolean;
 };
 type Pending = { id: string; name: string; args: any };
+type ToolStatus = { id: string; name: string; status: "running" | "done" };
 
 const HIDE_ON = new Set(["/auth", "/caretaker"]);
 
@@ -33,7 +35,9 @@ export default function CaretakerDock() {
   const [pending, setPending] = useState<Pending[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [toolStatuses, setToolStatuses] = useState<ToolStatus[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const hidden = !user || HIDE_ON.has(loc.pathname);
 
@@ -60,7 +64,12 @@ export default function CaretakerDock() {
         { event: "INSERT", schema: "public", table: "caretaker_messages", filter: `user_id=eq.${user.id}` },
         (payload) => {
           const m = payload.new as any;
-          setMessages((prev) => [...prev.slice(-19), m]);
+          // Avoid duplicating in-progress streaming messages.
+          setMessages((prev) => {
+            const hasStreaming = prev.some((x) => x.streaming);
+            if (hasStreaming) return prev;
+            return [...prev.slice(-19), m];
+          });
           if (!open && m.role === "assistant") setUnread(true);
           setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }), 50);
         },
@@ -76,30 +85,50 @@ export default function CaretakerDock() {
     if (open) setUnread(false);
   }, [open]);
 
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const send = async () => {
     if (!input.trim() || !user) return;
     const text = input.trim();
     setInput("");
     setBusy(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/caretaker-chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token}`,
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-        },
-        body: JSON.stringify({ message: text }),
-      });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || "chat failed");
-      setPending(j.pending || []);
-      await load();
-    } catch (e: any) {
-      toast.error(e?.message || "Failed");
-    }
-    setBusy(false);
+    setToolStatuses([]);
+
+    const userId = `local-u-${Date.now()}`;
+    const asstId = `local-a-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev.slice(-18),
+      { id: userId, role: "user", content: text },
+      { id: asstId, role: "assistant", content: "", streaming: true },
+    ]);
+    setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }), 50);
+
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    await streamCaretaker(text, (e) => {
+      if (e.type === "text") {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === asstId ? { ...m, content: (m.content || "") + e.delta } : m)),
+        );
+        setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }), 30);
+      } else if (e.type === "tool_call") {
+        setToolStatuses((prev) => {
+          const ex = prev.find((t) => t.id === e.id);
+          if (ex) return prev.map((t) => (t.id === e.id ? { ...t, status: e.status } : t));
+          return [...prev, { id: e.id, name: e.name, status: e.status }];
+        });
+      } else if (e.type === "pending") {
+        setPending(e.items);
+      } else if (e.type === "error") {
+        toast.error(e.error);
+      } else if (e.type === "done") {
+        setBusy(false);
+        // Mark streaming finished, then reload to sync with persisted DB rows
+        setMessages((prev) => prev.map((m) => (m.id === asstId ? { ...m, streaming: false } : m)));
+        load();
+      }
+    }, ac.signal);
   };
 
   const respond = async (p: Pending, approved: boolean) => {
