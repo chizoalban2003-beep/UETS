@@ -1,140 +1,118 @@
 
-# Driftworks: rebrand, demo polish, backtest, hedging, real-capital assessment
+# Caretaker as full-spectrum agent: tutor, autopilot, event narrator
 
-## Goals
-1. Rebrand the app to **Driftworks**.
-2. Make it obvious this is a demo with paper money tracking real-world data, with a reset.
-3. Give users (and the Caretaker bot) a way to backtest the bot against historical data.
-4. Give users a portfolio view with net exposure and Caretaker-driven cross-market hedge suggestions.
-5. Add a staged **Real-Capital Readiness Assessment** (literacy quiz → bot-graded simulation → eligibility flag).
-6. Run a backend smoke test of the existing system and report what works.
+Today the Caretaker can chat, run read-only tools, and request approval for trades. Next step: turn it into a real **caretaker of the app** that adapts to the user, narrates strategy across the lifecycle of every event (pre / during / post), and slides smoothly between *teach me*, *suggest to me*, and *do it for me*.
 
----
+## What changes for the user
 
-## 1. Rebrand to Driftworks
-- `index.html`: title and meta description.
-- `src/components/Layout.tsx`: header logo/wordmark to "Driftworks", tagline "Trade the drift from trend".
-- `src/pages/Landing.tsx`: hero copy, feature blurbs.
-- Add a small `BRAND` constant in `src/lib/brand.ts` so future renames are one-line.
-- No DB changes.
+1. **One control: Caretaker Mode slider** (Teach / Suggest / Co-pilot / Autopilot) — replaces the current scattered bot mode + caretaker mode split with a single source of truth.
+2. **Skill level** the Caretaker adapts to: *Beginner / Intermediate / Advanced*. Set in onboarding, editable any time. Drives vocabulary, depth, and how much it explains vs. acts.
+3. **Event briefings** — every market the user holds or watches gets three Caretaker notes, automatically:
+   - **Pre-event**: "Here's what I'm watching, why, and what I'd do at each outcome."
+   - **During**: live deltas as price/data moves, with a one-line "still on plan" / "plan changed because…".
+   - **Post-event**: outcome recap, P&L attribution, what the strategy got right/wrong, what to do next time.
+4. **Guided strategy walk-throughs** — when the Caretaker proposes a trade, it can expand into a step-by-step lesson tied to that exact market (band mechanics, distortion math, fee impact). Beginner sees plain English + a worked example; Advanced sees the formula and edge cases.
+5. **Caretaker Journal** — a new `/caretaker` tab section: every briefing, decision, and outcome, searchable. Replaces ad-hoc chat history for review.
 
-## 2. Demo Mode + Paper Balance Reset
-- **Demo badge**: persistent pill in the header ("Demo · Paper Capital") with a tooltip explaining "Real-world market data, paper money. Real-capital staking unlocks after assessment."
-- **Onboarding tour** (first login): 3-step popover hitting Markets → Bot → Caretaker.
-- **Reset paper balance**: button in Portfolio → Settings area.
-  - New edge function `reset-paper-balance`: closes open positions at current AMM mid, zeroes positions, resets wallet to §10,000, writes a `ledger_entries` row with reason `signup_bonus` and note "demo reset".
-  - Rate-limit: max 1 reset per 24h (check last reset ledger entry server-side).
+## Caretaker mode definitions (single slider)
 
-## 3. Bot Backtest
-- New page `src/pages/Backtest.tsx` at `/backtest`.
-- New edge function `bot-backtest`:
-  - Inputs: `market_ids[]`, `lookback_days`, `strategy`, `max_position_size`.
-  - For each market, walks `market_data_points` chronologically, simulates the same decision logic as `bot-run` against the AMM state at each tick (re-derive prices from data, not from current reserves), and produces a trade timeline + cumulative P&L.
-  - Returns: per-market series, aggregate P&L, win rate, max drawdown, Sharpe-ish ratio.
-- UI: market multiselect, lookback slider (7/30/90), strategy picker, line chart of equity curve, table of simulated trades.
-- Caretaker tool: add `run_backtest` to `caretaker-chat` so the bot can self-evaluate ("how would I have done last 30 days on SPX?").
+| Mode | What it does | Approval |
+|---|---|---|
+| Teach | Never trades. Explains everything. Quizzes the user inline. | n/a |
+| Suggest | Proposes trades + lessons. User clicks Approve. | per trade |
+| Co-pilot | Auto-executes trades **inside guardrails** (max position, daily loss, only enabled markets). Anything outside → asks. | per exception |
+| Autopilot | Full automation within guardrails. Posts briefings instead of asking. | none |
 
-## 4. Portfolio + Cross-Market Hedging
-- Extend `src/pages/Portfolio.tsx`:
-  - **Net exposure panel**: per market, sum of (yes_shares − no_shares) × current price; aggregate by category.
-  - **Correlation hint**: simple Pearson correlation of last 30 days of `market_data_points` between markets the user holds, surfaced as a heatmap.
-- Caretaker enhancement: new tool `suggest_hedges` in `caretaker-chat`:
-  - Given current positions, finds the highest |correlation| pair where the user is net-long both, and proposes a sized opposite contract (e.g., long snap-back on A → suggest long distortion on correlated B).
-  - Returns as a normal pending-approval tool card so the user clicks Approve to execute.
-- No schema change — uses existing tables.
+Guardrails (from `bots` table: `max_position_size`, `max_daily_loss`, `enabled_market_ids`) are enforced server-side regardless of mode.
 
-## 5. Real-Capital Readiness Assessment (staged)
-Two stages, both required, gated.
+## Event lifecycle engine
 
-**Stage 1 — Literacy quiz**
-- New table `assessment_attempts`:
-  - `user_id`, `stage` (`quiz`|`sim`), `score` numeric, `passed` bool, `details` jsonb, `created_at`.
-  - RLS: user manages own.
-- New page `/assessment` with a 10-question quiz on: how the trend band works, distortion vs snap-back payouts, AMM pricing, fees, what the bot does in each mode, risk of correlated positions.
-- Pass threshold: 8/10. Stored as an attempt row.
+A new edge function `caretaker-events` runs on a schedule and reacts to:
+- **T-24h before `markets.resolution_at`** → write a *pre-event briefing*.
+- **Significant move** (price/distortion crosses threshold, or new `market_data_points` outside band) → write a *during-event update*.
+- **Market resolved** (`status='resolved'`) → write a *post-event recap* with P&L attribution.
 
-**Stage 2 — Bot-graded simulation**
-- Unlocks only after Stage 1 pass.
-- Edge function `assessment-sim`:
-  - Spins up an isolated scenario: 3 synthetic markets with scripted data trajectories, §5,000 sim balance (NOT the user's wallet — kept in `details` jsonb on an attempt row).
-  - User makes ~5 decisions over the scenario (buy/sell/hold across markets).
-  - Caretaker (gpt-5) scores each decision against an optimal-policy reference and returns a 0–100 score plus written feedback.
-- Pass threshold: 75.
+Each briefing is a row in a new `caretaker_events` table and surfaces in:
+- The Caretaker dock (badge + "1 new briefing on SPX").
+- A new `/caretaker` Journal tab.
+- The market detail page (inline card).
 
-**Eligibility flag**
-- New table `user_capital_eligibility`:
-  - `user_id` (PK), `quiz_passed_at`, `sim_passed_at`, `eligible` bool generated/updated by trigger when both pass, `tier` text default `'pending'` (future: `'tier_1'`, etc.), `notes`.
-  - RLS: user reads own; only service role writes.
-- UI: `/assessment` shows progress (Quiz ✓ / Simulation ✗) and final "Eligible for real-capital staking — coming soon" state.
-- **No real money is moved.** This is purely the eligibility gate so when the real-capital rail ships, qualified users are already vetted.
+Briefings are generated by Lovable AI (`google/gemini-2.5-flash`) with the user's skill level + caretaker mode + relevant snapshot as context. Tone and depth scale to skill level; recommendations scale to mode.
 
-## 6. Backend Smoke Test (I run it, report results)
-Using read tools + edge-function curl:
-- Confirm `handle_new_user` trigger seeds wallet, role, bot, and top-5 markets (query `wallets`, `bots`, `user_roles` for a recent signup).
-- Curl each edge function with a minimal payload and capture status + first-line of response.
-- Check `cloud_status` is `ACTIVE_HEALTHY`.
-- Run `supabase--linter` to catch RLS / function security issues.
-- Report a pass/fail table in chat after build.
+## Adaptive teaching layer
 
----
+- `profiles` gets `skill_level` (`beginner|intermediate|advanced`) and `caretaker_mode` (`teach|suggest|copilot|autopilot`).
+- System prompt builder reads both and picks vocabulary + lesson density.
+- Every Caretaker message can carry an optional `lesson` block (concept name + 2–3 sentence explainer + "show me the math" expand). Rendered as a collapsible card in the dock.
+- New tool `explain_concept({concept, context_market_id?})` so the user (or the Caretaker itself, mid-strategy) can pull a focused lesson on band width, AMM pricing, distortion vs snap-back, hedging, etc.
+
+## Co-pilot / Autopilot execution path
+
+- Existing `caretaker-execute` already gates trades. Add a `mode` check:
+  - **Suggest**: insert pending approval (current behavior).
+  - **Co-pilot**: if trade ≤ guardrails → execute immediately, post a "did it, here's why" message. If outside → fall back to pending approval with a flagged warning.
+  - **Autopilot**: same as Co-pilot but never falls back; outside-guardrail proposals are silently dropped and logged in the journal as "skipped — exceeded daily loss guardrail".
+- Every auto-execution writes a `caretaker_events` row of type `action_taken` so the journal stays complete.
+
+## Files
+
+**Create**
+- `supabase/functions/caretaker-events/index.ts` — scheduled briefing generator + event detector.
+- `supabase/migrations/<ts>_caretaker_caretaker_mode.sql` — adds columns + table (see Technical).
+- `src/pages/CaretakerJournal.tsx` (or extend `src/pages/Caretaker.tsx` with a Journal tab).
+- `src/components/CaretakerModeSlider.tsx` — single slider in header + on `/bot`.
+- `src/components/EventBriefingCard.tsx` — used in dock, journal, and market detail.
+- `src/components/LessonCard.tsx` — collapsible inline lesson.
+
+**Edit**
+- `supabase/functions/caretaker-chat/index.ts` — add `explain_concept` tool, pass `skill_level` + `caretaker_mode` into the system prompt, emit optional `lesson` payloads.
+- `supabase/functions/caretaker-execute/index.ts` — branch on caretaker_mode (auto-execute vs pending).
+- `src/components/CaretakerDock.tsx` — render `EventBriefingCard` + `LessonCard`, show unread briefing badge.
+- `src/pages/Bot.tsx` — replace separate mode controls with the unified slider.
+- `src/pages/MarketDetail.tsx` — show latest briefing for that market.
+- `src/components/OnboardingTour.tsx` — add a step asking for skill level.
 
 ## Technical details
 
-**Schema changes (one migration)**
+**Migration**
 ```sql
-create table public.assessment_attempts (
+alter table public.profiles
+  add column if not exists skill_level text not null default 'beginner'
+    check (skill_level in ('beginner','intermediate','advanced')),
+  add column if not exists caretaker_mode text not null default 'suggest'
+    check (caretaker_mode in ('teach','suggest','copilot','autopilot'));
+
+create table public.caretaker_events (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
-  stage text not null check (stage in ('quiz','sim')),
-  score numeric not null,
-  passed boolean not null,
-  details jsonb not null default '{}',
+  market_id uuid,
+  kind text not null check (kind in ('pre_event','during_event','post_event','action_taken','lesson')),
+  title text not null,
+  body_md text not null,
+  metrics jsonb not null default '{}',
+  read_at timestamptz,
   created_at timestamptz not null default now()
 );
-alter table public.assessment_attempts enable row level security;
-create policy "users manage own attempts" on public.assessment_attempts
-  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create table public.user_capital_eligibility (
-  user_id uuid primary key,
-  quiz_passed_at timestamptz,
-  sim_passed_at timestamptz,
-  eligible boolean not null default false,
-  tier text not null default 'pending',
-  notes text,
-  updated_at timestamptz not null default now()
-);
-alter table public.user_capital_eligibility enable row level security;
-create policy "users read own eligibility" on public.user_capital_eligibility
+alter table public.caretaker_events enable row level security;
+create policy "users read own events" on public.caretaker_events
   for select using (auth.uid() = user_id);
--- writes only via service role from edge functions
+create policy "users update own events" on public.caretaker_events
+  for update using (auth.uid() = user_id);
+create index on public.caretaker_events (user_id, created_at desc);
 ```
+Service role from `caretaker-events` writes rows; users only read/mark-read their own.
 
-**New edge functions**
-- `reset-paper-balance` — verify_jwt true (in code), 24h cooldown.
-- `bot-backtest` — verify_jwt true (in code), pure simulation, no DB writes.
-- `assessment-sim` — verify_jwt true (in code), uses `LOVABLE_API_KEY` with `google/gemini-2.5-flash` for scoring; writes attempt row + updates eligibility via service role.
+**Scheduling**
+- `caretaker-events` is invoked (a) by a cron-style call from `auto-resolve` piggyback (already runs periodically), and (b) on demand from the dock when the user opens it (cheap dedupe: don't regenerate within last 30 min for the same market+kind).
 
-**Caretaker tool additions** (in `caretaker-chat/index.ts`)
-- `run_backtest({market_ids, lookback_days})` — read-only.
-- `suggest_hedges()` — returns proposals as pending tool cards (uses existing approval flow).
+**Scope guard for AI cost**
+- Only generate briefings for markets where the user has an open position OR resolution is within 24h OR distortion crossed 0.5. Cap at 3 new briefings per user per run.
 
-**Routes added in `src/App.tsx`**
-- `/backtest`, `/assessment` (both auth-gated).
+**Caretaker mode drives both UI and server**
+- Client reads `profiles.caretaker_mode` to render the slider state and toggle the "Approve" UI vs "Auto-executed" badge.
+- `caretaker-execute` re-reads it server-side (never trust the client) before deciding to auto-execute.
 
-**Files created**
-- `src/lib/brand.ts`
-- `src/pages/Backtest.tsx`, `src/pages/Assessment.tsx`
-- `src/components/DemoBadge.tsx`, `src/components/OnboardingTour.tsx`
-- `supabase/functions/reset-paper-balance/index.ts`
-- `supabase/functions/bot-backtest/index.ts`
-- `supabase/functions/assessment-sim/index.ts`
-- One migration file.
-
-**Files edited**
-- `index.html`, `src/components/Layout.tsx`, `src/pages/Landing.tsx`, `src/pages/Portfolio.tsx`, `src/App.tsx`, `supabase/functions/caretaker-chat/index.ts`.
-
-## Out of scope (call out, don't build)
-- Actual real-money rails / KYC / custodian — only the eligibility gate ships now.
-- Multi-tier capital limits — `tier` column is reserved but unused.
-- Live correlation matrix beyond user's held markets — kept narrow for performance.
+## Out of scope (explicit)
+- Real-money execution — still gated behind the assessment from the previous step.
+- Multi-user / shared journals — single-user only.
+- Push notifications — briefings live in-app only for now (toast + badge).
