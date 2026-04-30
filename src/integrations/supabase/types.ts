@@ -86,6 +86,7 @@ export type Database = {
       }
       bots: {
         Row: {
+          caretaker_mode: Database["public"]["Enums"]["caretaker_mode"]
           created_at: string
           custom_prompt: string | null
           enabled_market_ids: string[]
@@ -97,6 +98,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          caretaker_mode?: Database["public"]["Enums"]["caretaker_mode"]
           created_at?: string
           custom_prompt?: string | null
           enabled_market_ids?: string[]
@@ -108,6 +110,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          caretaker_mode?: Database["public"]["Enums"]["caretaker_mode"]
           created_at?: string
           custom_prompt?: string | null
           enabled_market_ids?: string[]
@@ -116,6 +119,45 @@ export type Database = {
           mode?: Database["public"]["Enums"]["bot_mode"]
           strategy?: Database["public"]["Enums"]["bot_strategy"]
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      caretaker_messages: {
+        Row: {
+          approved: boolean | null
+          content: string | null
+          created_at: string
+          id: string
+          pending_approval: boolean
+          result: Json | null
+          role: Database["public"]["Enums"]["caretaker_role"]
+          tool_call_id: string | null
+          tool_calls: Json | null
+          user_id: string
+        }
+        Insert: {
+          approved?: boolean | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          pending_approval?: boolean
+          result?: Json | null
+          role: Database["public"]["Enums"]["caretaker_role"]
+          tool_call_id?: string | null
+          tool_calls?: Json | null
+          user_id: string
+        }
+        Update: {
+          approved?: boolean | null
+          content?: string | null
+          created_at?: string
+          id?: string
+          pending_approval?: boolean
+          result?: Json | null
+          role?: Database["public"]["Enums"]["caretaker_role"]
+          tool_call_id?: string | null
+          tool_calls?: Json | null
           user_id?: string
         }
         Relationships: []
@@ -413,6 +455,42 @@ export type Database = {
         }
         Relationships: []
       }
+      reports: {
+        Row: {
+          content_md: string
+          created_at: string
+          id: string
+          kind: Database["public"]["Enums"]["report_kind"]
+          metrics: Json
+          period_end: string
+          period_start: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          content_md: string
+          created_at?: string
+          id?: string
+          kind: Database["public"]["Enums"]["report_kind"]
+          metrics?: Json
+          period_end: string
+          period_start: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          content_md?: string
+          created_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["report_kind"]
+          metrics?: Json
+          period_end?: string
+          period_start?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       trades: {
         Row: {
           by_bot: boolean
@@ -459,6 +537,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_goals: {
+        Row: {
+          created_at: string
+          deadline: string | null
+          id: string
+          max_loss: number | null
+          notes: string | null
+          status: Database["public"]["Enums"]["goal_status"]
+          target_return_pct: number | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          deadline?: string | null
+          id?: string
+          max_loss?: number | null
+          notes?: string | null
+          status?: Database["public"]["Enums"]["goal_status"]
+          target_return_pct?: number | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          deadline?: string | null
+          id?: string
+          max_loss?: number | null
+          notes?: string | null
+          status?: Database["public"]["Enums"]["goal_status"]
+          target_return_pct?: number | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {
@@ -537,6 +654,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      pick_top_live_markets: { Args: { _limit?: number }; Returns: string[] }
       resolve_market: {
         Args: { _final_value: number; _market_id: string }
         Returns: {
@@ -598,8 +716,11 @@ export type Database = {
       app_role: "admin" | "user"
       bot_mode: "off" | "suggest" | "approve" | "auto"
       bot_strategy: "mean_reversion" | "momentum" | "custom"
+      caretaker_mode: "chat" | "assist" | "autopilot"
+      caretaker_role: "system" | "user" | "assistant" | "tool"
       contract_kind: "distortion" | "snapback"
       data_source_kind: "manual" | "provider" | "custom_url"
+      goal_status: "active" | "achieved" | "failed" | "cancelled"
       ledger_reason:
         | "signup_bonus"
         | "deposit"
@@ -610,6 +731,7 @@ export type Database = {
         | "bot_action"
         | "adjustment"
       market_status: "open" | "resolving" | "resolved"
+      report_kind: "daily" | "weekly" | "monthly" | "on_demand"
       suggestion_status:
         | "pending"
         | "accepted"
@@ -755,8 +877,11 @@ export const Constants = {
       app_role: ["admin", "user"],
       bot_mode: ["off", "suggest", "approve", "auto"],
       bot_strategy: ["mean_reversion", "momentum", "custom"],
+      caretaker_mode: ["chat", "assist", "autopilot"],
+      caretaker_role: ["system", "user", "assistant", "tool"],
       contract_kind: ["distortion", "snapback"],
       data_source_kind: ["manual", "provider", "custom_url"],
+      goal_status: ["active", "achieved", "failed", "cancelled"],
       ledger_reason: [
         "signup_bonus",
         "deposit",
@@ -768,6 +893,7 @@ export const Constants = {
         "adjustment",
       ],
       market_status: ["open", "resolving", "resolved"],
+      report_kind: ["daily", "weekly", "monthly", "on_demand"],
       suggestion_status: [
         "pending",
         "accepted",

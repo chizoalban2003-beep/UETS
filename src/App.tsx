@@ -13,6 +13,8 @@ import MarketNew from "./pages/MarketNew";
 import MarketDetail from "./pages/MarketDetail";
 import Portfolio from "./pages/Portfolio";
 import BotPage from "./pages/Bot";
+import Caretaker from "./pages/Caretaker";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -33,6 +35,8 @@ const App = () => (
               <Route path="/markets/:id" element={<MarketDetail />} />
               <Route path="/portfolio" element={<RequireAuth><Portfolio /></RequireAuth>} />
               <Route path="/bot" element={<RequireAuth><BotPage /></RequireAuth>} />
+              <Route path="/caretaker" element={<RequireAuth><Caretaker /></RequireAuth>} />
+              <Route path="/reports" element={<RequireAuth><Reports /></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
