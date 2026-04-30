@@ -170,6 +170,33 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "explain_concept",
+      description: "Return a focused mini-lesson on a Driftworks concept, adapted to the user's skill level. Use when the user is confused, asks 'why', or when you want to teach alongside a suggestion.",
+      parameters: {
+        type: "object",
+        properties: {
+          concept: { type: "string", description: "e.g. 'band width', 'distortion vs snapback', 'AMM pricing', 'fees', 'hedging', 'mean reversion'" },
+          context_market_id: { type: "string", description: "Optional market id to ground the lesson with concrete numbers." },
+        },
+        required: ["concept"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_briefings",
+      description: "List the user's recent Caretaker event briefings (pre-event, live updates, post-event recaps). Useful when the user asks 'what happened' or 'what's next'.",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number", description: "default 5" } },
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 async function getUserContext(supabase: any, userId: string) {
