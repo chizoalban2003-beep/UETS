@@ -1,92 +1,107 @@
-## Concept
+# Make markets work on any dataset — live data, auto-resolve, templates, richer trends, custom oracles
 
-Every market is built on a **trend** treated as an elastic object. Creators define:
-- a **dataset or event series** (uploaded CSV, manual points, or a pluggable feed),
-- a **baseline trend model** (linear regression, moving average, exponential, or custom function),
-- an **elasticity band** (the "natural" range around the trend).
+Turn the platform from "upload a CSV and resolve manually" into a real prediction venue that can spin up markets on any public dataset, fetch fresh values on a schedule, and settle itself.
 
-Traders take positions on whether the next observation(s) will **stretch above**, **compress below**, or **stay within** the band. A single market generates two natural instruments:
-- **Distortion contracts** — pay out proportional to how far the actual value deviates from the modeled trend at resolution time (scalar).
-- **Snap-back contracts** — pay out if the series returns inside the band within a window (binary).
+## What we'll build
 
-This gives the platform one coherent mental model for any dataset with an obvious trend (prices, KPIs, sports stats, weather, on-chain metrics, etc.).
+### 1. Live data ingestion (scheduled fetchers)
 
-## Scope for v1
+A new `data_sources` table describes *where* each market gets its values from:
 
-Tightly integrated platform + bot, paper-trading only, money-agnostic ledger so any payment rail can plug in later.
+- `kind`: `manual` | `provider` | `custom_url`
+- `provider`: `coingecko` | `yahoo` | `fred` | `open-meteo` | `polymarket` | `github` | `nasa-co2`
+- `provider_params`: JSONB (e.g. `{symbol: "BTC"}`, `{ticker: "AAPL"}`, `{series: "CPIAUCSL"}`, `{lat, lon, var: "temperature_2m"}`)
+- `custom_url` + `json_path` for the "paste any HTTPS JSON endpoint" path
+- `fetch_interval_minutes` (default 60)
+- `last_fetched_at`, `last_error`
 
-### 1. Accounts & wallet ledger
-- Email + Google sign-in.
-- Each user gets a virtual wallet with starting balance (e.g. 10,000 units).
-- Generic `ledger_entries` table records every credit/debit with a reason (deposit, trade, settlement, fee, bot action). Real-money rails attach later by minting/burning entries.
+A new edge function **`ingest-data`** runs on a `pg_cron` schedule (every 5 min). For each due `data_source` it:
+1. Calls the right provider adapter
+2. Inserts a new row into `market_data_points`
+3. Updates `last_fetched_at` / `last_error`
 
-### 2. Markets
-- **Create market** wizard:
-  1. Name, description, category.
-  2. Data source — paste/upload time series, or define an event with manual resolution.
-  3. Pick a trend model (linear, MA, exponential, custom expression).
-  4. Set elasticity band width (absolute or % of trend).
-  5. Resolution date and oracle (manual creator confirmation in v1; pluggable feed adapter later).
-- **Market page** shows:
-  - Live chart with actual series, fitted trend, elasticity band, current "distortion" indicator.
-  - Order book / AMM price for distortion and snap-back contracts.
-  - Position & P&L for the logged-in user.
+Provider adapters live in `supabase/functions/ingest-data/providers/*.ts`. All free, no API keys needed for the v1 set (CoinGecko, Yahoo via query1, FRED public CSV, Open-Meteo, Polymarket public, GitHub stars, NASA CO₂). FRED's official API needs a key — we'll use it only if the user adds one later.
 
-### 3. Trading engine
-- Start with a **constant-product AMM** per contract (simple, no order matching needed).
-- Buy/sell against the pool; fees go to a market reserve.
-- Settlement at resolution: contracts pay out from the reserve based on final distortion vs band.
+### 2. Auto-resolution
 
-### 4. AI trading bot
-One bot per user, configurable per market:
-- **Mode**: Suggest / Approve / Full Auto.
-- **Risk limits**: max position size, max daily loss, allowed markets.
-- **Strategy presets**: Mean-reversion (bet on snap-back when distortion is high), Momentum (bet on continued stretch), Custom (user describes strategy in plain English; AI interprets).
-- The bot:
-  1. Pulls latest series + trend model for each enabled market.
-  2. Calls the AI gateway with market state + strategy to produce a recommendation (action, size, rationale, confidence).
-  3. **Suggest** → shows in a feed.
-  4. **Approve** → notification; user one-clicks accept/reject.
-  5. **Auto** → executes within risk limits, logs everything.
-- **Reporting**: per-bot dashboard with trade log, rationale per trade, realized/unrealized P&L, win rate, exposure, drawdown, strategy summary.
+New edge function **`auto-resolve`** runs on the same cron. It finds markets where `status = 'open'` and `resolution_at <= now()`, pulls the latest value from the linked data source, and calls `resolve_market(market_id, final_value)`.
 
-### 5. Core pages
-- `/` — landing + featured markets.
-- `/markets` — browse/search.
-- `/markets/:id` — market detail, chart, trade panel.
-- `/markets/new` — create market wizard.
-- `/portfolio` — wallet, open positions, history.
-- `/bot` — bot config, mode toggle, suggestion feed, performance reports.
-- `/auth` — sign in/up.
+The existing `resolve_market` function only allows the creator to call it. We add an internal variant **`resolve_market_system`** (SECURITY DEFINER, callable only by service role) that skips the creator check, used by the cron job.
 
-### 6. Out of scope for v1 (called out so we can sequence later)
-- Real money / KYC / regulatory work.
-- Live external data feeds (we ship CSV upload + manual entry; adapter interface ready).
-- Order book matching, limit orders, margin.
-- Multi-bot strategies, backtesting on historical data.
+### 3. Market templates (one-click create)
 
-## UX & visual direction
+New `Templates` page and a **Templates** tab on `MarketNew.tsx`. Picks like:
 
-Trading-app feel but approachable: dark theme, monospace for numbers, large clear charts (Recharts), green/red only for P&L, neutral palette elsewhere. Each market card shows a sparkline with the elasticity band shaded so the "elastic" metaphor is visible everywhere.
+- Crypto price (BTC, ETH, SOL via CoinGecko)
+- Stock price (AAPL, NVDA, TSLA via Yahoo)
+- Macro (US CPI, unemployment via FRED)
+- Weather (temperature in any city via Open-Meteo)
+- GitHub stars on any repo
+- Atmospheric CO₂ (NASA)
 
-## Technical notes
+Selecting a template prefills the form (name, category, unit, trend model, band, data source) — user picks resolution date and clicks **Create**. The template also seeds the market with a backfill of recent history so the trend chart has shape immediately.
 
-- Frontend: React + Vite + Tailwind + shadcn (existing stack).
-- Backend: Lovable Cloud (Supabase) — auth, Postgres, edge functions.
-- AI: Lovable AI Gateway (default `google/gemini-3-flash-preview`) inside an edge function for bot reasoning + structured output via tool calling.
-- Tables (high level): `profiles`, `user_roles`, `wallets`, `ledger_entries`, `markets`, `market_data_points`, `contracts` (distortion + snap-back per market), `pools` (AMM state), `positions`, `trades`, `bots`, `bot_configs`, `bot_suggestions`, `bot_trades`. Roles in a separate `user_roles` table with `has_role()` SECURITY DEFINER function.
-- RLS everywhere; ledger writes only via SECURITY DEFINER functions so balances can't be forged.
-- Trend fitting + distortion calc done in a Postgres function or edge function so both UI and bot see the same numbers.
-- Cron-triggered edge function evaluates open markets, runs bot strategies, and posts suggestions/trades.
+### 4. Richer trend models
 
-## Build order
+Extend `src/lib/trend.ts` and the `trend_model` enum with:
 
-1. Auth + wallet ledger + roles.
-2. Market schema + create wizard + market detail page with chart, trend, band (no trading yet).
-3. AMM contracts + trade panel + portfolio.
-4. Resolution + settlement flow.
-5. Bot: config UI, suggestion engine, suggest mode.
-6. Approve mode + notifications.
-7. Full-auto mode + risk limits + reporting dashboard.
+- `log_linear` — fits `log(y) = a + bx`, good for compounding series
+- `seasonal` — naïve STL: rolling mean + repeating weekly/yearly residual, good for weather/traffic
+- `bollinger` — adaptive band: rolling mean ± k·rolling-stdev (k stored in `trend_params`)
+- `ewma` — exponentially weighted moving average
 
-After v1 is solid we can layer on real-money rails, live data feeds, and richer market types.
+The `MarketNew` wizard gets a model picker with a short description for each, and the live preview chart updates per-model.
+
+### 5. Custom oracle URL (power-user path)
+
+In `MarketNew`, an "Advanced → Custom data source" panel:
+
+- HTTPS endpoint URL
+- JSONPath to extract the numeric value (e.g. `$.data.price`)
+- Fetch interval
+- A **Test fetch** button that calls a new `test-oracle` edge function and shows the parsed value before saving
+
+The same plumbing powers automatic ingestion later.
+
+### 6. Discovery & UX
+
+- `Markets` page: category filter chips (Crypto / Stocks / Macro / Weather / Code / Climate / Custom) and a "Live" badge on markets backed by a data source
+- Market detail page: shows the data source, time of last fetch, and "next update in N min"
+- New `Live` tab on the landing page showing the most-traded live markets
+
+## Technical details
+
+**Migrations**
+- `data_sources` table + RLS (read public, write only by market creator)
+- Add `data_source_id` FK to `markets` (nullable for legacy CSV markets)
+- Extend `trend_model` enum with `log_linear`, `seasonal`, `bollinger`, `ewma`
+- `resolve_market_system(_market_id, _final_value)` SECURITY DEFINER, callable by service role only
+- pg_cron entries hitting the two new edge functions every 5 minutes (using project URL + anon key; created via the insert tool, not migration)
+
+**Edge functions**
+- `ingest-data` — iterates due sources, calls provider adapter, inserts data points
+- `auto-resolve` — settles markets past their resolution time
+- `test-oracle` — one-shot fetch + JSONPath extract for the custom URL UI
+
+All three: CORS headers, Zod validation, structured errors, no client secrets exposed.
+
+**Frontend**
+- `src/lib/providers.ts` — template definitions (id, label, category, unit, defaults, sample symbols)
+- `src/lib/trend.ts` — add the four new model fitters
+- `src/pages/MarketNew.tsx` — Tabs: **CSV** | **Template** | **Custom URL**, model picker upgrade, source preview
+- `src/pages/MarketDetail.tsx` — data-source card + last-update indicator
+- `src/pages/Markets.tsx` — category chips + Live badge
+- `src/components/DataSourceBadge.tsx` — small reusable component
+
+**No external API keys required for the v1 provider set.** FRED official API and any paid sources stay opt-in.
+
+## Roadmap (task list I'll execute)
+
+1. DB schema: `data_sources`, FK on `markets`, enum extension, `resolve_market_system`
+2. Edge functions: `ingest-data`, `auto-resolve`, `test-oracle` (with provider adapters)
+3. pg_cron schedule for both background functions
+4. `src/lib/trend.ts` + `src/lib/providers.ts`
+5. `MarketNew` wizard rebuild with Templates / Custom URL / CSV tabs and richer model picker
+6. `Markets` discovery (category chips, Live badge) + `MarketDetail` data-source panel
+7. Backfill helper inside `ingest-data` so freshly-created template markets get ~90 days of history immediately
+8. Manual smoke test: create a BTC market from template → confirm cron writes points → fast-forward `resolution_at` → confirm auto-resolve settles positions
