@@ -287,9 +287,11 @@ export default function BotPage() {
         </TabsList>
 
         <TabsContent value="config" className="space-y-6 mt-6">
+          <CaretakerModePanel />
           <Card className="p-6 space-y-5">
             <div>
-              <Label className="mb-2 block">Mode</Label>
+              <Label className="mb-2 block">Bot trade-execution mode (legacy controls)</Label>
+              <p className="text-xs text-muted-foreground mb-2">For most users, the Caretaker mode above is the only switch you need. These finer controls only affect the rule-based bot.</p>
               <Select value={bot.mode} onValueChange={(v) => saveBot({ mode: v as BotMode })}>
                 <SelectTrigger className="max-w-xs">
                   <SelectValue />
