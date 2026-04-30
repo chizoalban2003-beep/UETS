@@ -20,6 +20,51 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { formatNum } from "@/lib/trend";
 import { Link } from "react-router-dom";
+import CaretakerModeSlider, { type CaretakerMode } from "@/components/CaretakerModeSlider";
+
+function CaretakerModePanel() {
+  const { user } = useAuth();
+  const [mode, setMode] = useState<CaretakerMode>("suggest");
+  const [skill, setSkill] = useState<"beginner" | "intermediate" | "advanced">("beginner");
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles").select("skill_level,caretaker_mode").eq("id", user.id).maybeSingle().then(({ data }) => {
+      if (data) {
+        setMode(((data as any).caretaker_mode || "suggest") as CaretakerMode);
+        setSkill(((data as any).skill_level || "beginner") as any);
+      }
+    });
+  }, [user]);
+  const updateMode = async (m: CaretakerMode) => {
+    if (!user) return;
+    setMode(m);
+    await supabase.from("profiles").update({ caretaker_mode: m }).eq("id", user.id);
+    toast.success(`Caretaker → ${m}`);
+  };
+  const updateSkill = async (s: typeof skill) => {
+    if (!user) return;
+    setSkill(s);
+    await supabase.from("profiles").update({ skill_level: s }).eq("id", user.id);
+  };
+  return (
+    <Card className="p-6 space-y-4 border-primary/30 bg-gradient-surface">
+      <div>
+        <Label className="mb-1 block">Caretaker mode</Label>
+        <p className="text-xs text-muted-foreground mb-3">One slider controls how much the AI does for you across the whole app.</p>
+        <CaretakerModeSlider value={mode} onChange={updateMode} />
+      </div>
+      <div>
+        <Label className="mb-2 block">Your skill level</Label>
+        <div className="flex gap-2 flex-wrap">
+          {(["beginner", "intermediate", "advanced"] as const).map((s) => (
+            <Button key={s} size="sm" variant={skill === s ? "default" : "outline"} className="capitalize" onClick={() => updateSkill(s)}>{s}</Button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">Drives how much the Caretaker explains vs. assumes you know.</p>
+      </div>
+    </Card>
+  );
+}
 
 type BotMode = "off" | "suggest" | "approve" | "auto";
 type BotStrategy = "mean_reversion" | "momentum" | "custom";
