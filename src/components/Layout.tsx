@@ -1,9 +1,10 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Activity, LayoutGrid, Plus, Wallet, Bot, LogOut, LogIn, Sparkles, FileText } from "lucide-react";
+import { Activity, LayoutGrid, Plus, Wallet, Bot, LogOut, LogIn, Sparkles, FileText, Target } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
+import CaretakerDock from "@/components/CaretakerDock";
 
 export default function Layout() {
   const { user, loading } = useAuth();
@@ -53,6 +54,7 @@ export default function Layout() {
             <NavLink to="/portfolio" className={linkCls}><Wallet className="w-4 h-4" />Portfolio</NavLink>
             <NavLink to="/bot" className={linkCls}><Bot className="w-4 h-4" />Bot</NavLink>
             <NavLink to="/caretaker" className={linkCls}><Sparkles className="w-4 h-4" />Caretaker</NavLink>
+            <NavLink to="/goals" className={linkCls}><Target className="w-4 h-4" />Goals</NavLink>
             <NavLink to="/reports" className={linkCls}><FileText className="w-4 h-4" />Reports</NavLink>
           </nav>
 
@@ -81,6 +83,8 @@ export default function Layout() {
       <footer className="border-t border-border/60 py-6 text-center text-xs text-muted-foreground">
         Paper-trading sandbox · Markets resolve manually by their creator · Built on Lovable
       </footer>
+
+      <CaretakerDock />
     </div>
   );
 }

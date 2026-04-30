@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bot, Play, Check, X, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
+import { Bot, Play, Check, X, TrendingUp, TrendingDown, Loader2, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -213,8 +213,47 @@ export default function BotPage() {
   const wins = botTrades.filter((t) => t.side.startsWith("sell")).length;
   const totalTrades = botTrades.length;
 
+  const dismissedKey = user ? `bot-onboarding-dismissed-${user.id}` : "";
+  const showOnboarding =
+    !!user &&
+    bot.enabled_market_ids.length > 0 &&
+    botTrades.length === 0 &&
+    typeof window !== "undefined" &&
+    !window.localStorage.getItem(dismissedKey);
+
   return (
     <div className="container py-10 max-w-6xl">
+      {showOnboarding && (
+        <Card className="p-4 mb-6 border-primary/40 bg-gradient-surface flex items-start gap-3 flex-wrap">
+          <Sparkles className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-[200px]">
+            <p className="text-sm font-medium mb-1">
+              We auto-subscribed you to {bot.enabled_market_ids.length} live markets.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Bot is in <strong>Suggest</strong> mode — review trade ideas in the feed and approve
+              the ones you like. Switch to Auto when you're ready to let it run.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => saveBot({ mode: "auto" })}>
+              Switch to Auto
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                window.localStorage.setItem(dismissedKey, "1");
+                // force rerender
+                setBot({ ...bot });
+              }}
+            >
+              Dismiss
+            </Button>
+          </div>
+        </Card>
+      )}
+
       <div className="flex items-start justify-between mb-8 gap-4 flex-wrap">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight mb-1">Trading bot</h1>
