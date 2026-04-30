@@ -58,6 +58,9 @@ export default function MarketNew() {
     d.setDate(d.getDate() + 14);
     return d.toISOString().slice(0, 10);
   });
+  const [rulesMd, setRulesMd] = useState(
+    "Resolution rule: At the resolution date, the final value is taken from the configured data source.\n\nDispute policy: Holders may dispute within 24h of the value being posted by locking a 50-credit bond.",
+  );
 
   // Custom URL state
   const [customUrl, setCustomUrl] = useState("");
@@ -158,6 +161,10 @@ export default function MarketNew() {
         }
       }
 
+      if (rulesMd.trim().length < 20) {
+        setBusy(false);
+        return toast.error("Rules must be at least 20 characters");
+      }
       const { data: market, error } = await supabase
         .from("markets")
         .insert({
@@ -171,6 +178,8 @@ export default function MarketNew() {
           band_is_pct: bandIsPct,
           resolution_at: new Date(resolutionAt + "T23:59:59Z").toISOString(),
           data_source_id: dataSourceId,
+          rules_md: rulesMd,
+          status: "draft" as any,
         })
         .select()
         .single();
@@ -193,7 +202,7 @@ export default function MarketNew() {
       }
 
       setBusy(false);
-      toast.success("Market created");
+      toast.success("Draft saved — review rules & stake to publish");
       nav(`/markets/${market.id}`);
     } catch (e: any) {
       setBusy(false);
@@ -311,6 +320,12 @@ export default function MarketNew() {
             <div className="space-y-2"><Label>Unit</Label><Input value={unit} onChange={(e) => setUnit(e.target.value)} /></div>
           </div>
           <div className="space-y-2"><Label>Resolution date</Label><Input type="date" value={resolutionAt} onChange={(e) => setResolutionAt(e.target.value)} /></div>
+          <div className="space-y-2">
+            <Label>Resolution & dispute rules</Label>
+            <Textarea rows={5} value={rulesMd} onChange={(e) => setRulesMd(e.target.value)}
+              placeholder="How will the final value be determined? What counts as a valid dispute?" />
+            <p className="text-[11px] text-muted-foreground">Traders see this on the market page. Min 20 chars.</p>
+          </div>
         </Card>
 
         <Card className="p-5 space-y-4">
@@ -373,9 +388,12 @@ export default function MarketNew() {
       <div className="mt-6 flex justify-end gap-3">
         <Button variant="outline" onClick={() => nav("/markets")}>Cancel</Button>
         <Button onClick={submit} disabled={busy || (mode === "template" && !template) || (mode === "custom" && !testResult?.ok)}>
-          {busy ? "Creating…" : "Create market"}
+          {busy ? "Saving…" : "Save draft → review & stake"}
         </Button>
       </div>
+      <p className="text-xs text-muted-foreground mt-2 text-right">
+        After saving you'll lock a creator stake (min $400) on the market page to publish it.
+      </p>
     </div>
   );
 }
