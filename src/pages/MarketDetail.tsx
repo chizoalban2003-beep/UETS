@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { buildBandSeries, distortion, ammPriceYes, ammQuoteBuy, formatNum } from "@/lib/trend";
@@ -13,7 +15,8 @@ import { PROVIDER_LABELS } from "@/lib/providers";
 import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import DataSourceBadge from "@/components/DataSourceBadge";
-import { Radio, AlertCircle } from "lucide-react";
+import MarketLifecycle from "@/components/MarketLifecycle";
+import { Radio, AlertCircle, ShieldAlert, FileText } from "lucide-react";
 
 type Market = any;
 type Contract = any;
@@ -28,15 +31,21 @@ export default function MarketDetail() {
   const [positions, setPositions] = useState<Record<string, Position>>({});
   const [dataSource, setDataSource] = useState<any>(null);
   const [resolveValue, setResolveValue] = useState("");
+  const [stake, setStake] = useState(400);
+  const [disputes, setDisputes] = useState<any[]>([]);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [{ data: m }, { data: pts }, { data: cts }] = await Promise.all([
+    const [{ data: m }, { data: pts }, { data: cts }, { data: dsp }] = await Promise.all([
       supabase.from("markets").select("*").eq("id", id).maybeSingle(),
       supabase.from("market_data_points").select("ts,value").eq("market_id", id).order("ts"),
       supabase.from("contracts").select("*").eq("market_id", id),
+      supabase.from("market_disputes").select("*").eq("market_id", id).order("created_at", { ascending: false }),
     ]);
     setMarket(m);
+    setDisputes(dsp || []);
     setPoints((pts || []).map((p) => ({ ts: new Date(p.ts).getTime(), value: Number(p.value) })));
     setContracts(cts || []);
     if (m?.data_source_id) {
