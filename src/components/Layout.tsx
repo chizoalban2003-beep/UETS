@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import CaretakerDock from "@/components/CaretakerDock";
 import DemoBadge from "@/components/DemoBadge";
 import OnboardingTour from "@/components/OnboardingTour";
+import NotificationsBell from "@/components/NotificationsBell";
 import { BRAND } from "@/lib/brand";
 
 export default function Layout() {
@@ -65,6 +66,7 @@ export default function Layout() {
 
           <div className="flex items-center gap-3">
             <DemoBadge />
+            {user && <NotificationsBell />}
             {user && balance !== null && (
               <div className="hidden sm:flex flex-col items-end leading-tight">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Balance</span>
