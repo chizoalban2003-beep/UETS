@@ -817,6 +817,15 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      detect_concentration_risk: {
+        Args: { _market_id: string }
+        Returns: {
+          contract_id: string
+          share_pct: number
+          side: string
+          user_id: string
+        }[]
+      }
       execute_trade: {
         Args: {
           _by_bot?: boolean
