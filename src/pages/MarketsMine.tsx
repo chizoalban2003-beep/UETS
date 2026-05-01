@@ -142,6 +142,32 @@ export default function MarketsMine() {
             </Row>
           ))}
         </TabsContent>
+
+        <TabsContent value="disputes" className="mt-4 space-y-3">
+          {disputes.length === 0 && <Empty msg="No disputes raised on your markets." />}
+          {disputes.map((d) => (
+            <Card key={d.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant={d.status === "open" ? "destructive" : "outline"} className="text-[10px]">{d.status}</Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(d.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <Link to={`/markets/${d.market_id}`} className="font-medium hover:underline">
+                    {d.market?.name || "Market"}
+                  </Link>
+                  <p className="text-sm text-muted-foreground mt-1 whitespace-pre-line">{d.reason}</p>
+                </div>
+                <div className="text-right text-xs text-muted-foreground">
+                  <div>Bond</div>
+                  <div className="font-mono-num text-foreground">${Number(d.bond).toFixed(2)}</div>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </TabsContent>
       </Tabs>
     </div>
   );
