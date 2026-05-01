@@ -17,6 +17,7 @@ const DONE_STATUSES = ["resolved", "cancelled"];
 export default function MarketsMine() {
   const { user } = useAuth();
   const [markets, setMarkets] = useState<any[]>([]);
+  const [disputes, setDisputes] = useState<any[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = async () => {
@@ -27,6 +28,17 @@ export default function MarketsMine() {
       .eq("creator_id", user.id)
       .order("created_at", { ascending: false });
     setMarkets(data || []);
+    const ids = (data || []).map((m: any) => m.id);
+    if (ids.length) {
+      const { data: d } = await supabase
+        .from("market_disputes")
+        .select("*, market:markets(name)")
+        .in("market_id", ids)
+        .order("created_at", { ascending: false });
+      setDisputes(d || []);
+    } else {
+      setDisputes([]);
+    }
   };
 
   useEffect(() => {
@@ -81,6 +93,7 @@ export default function MarketsMine() {
           <TabsTrigger value="drafts">Drafts ({drafts.length})</TabsTrigger>
           <TabsTrigger value="live">Live ({live.length})</TabsTrigger>
           <TabsTrigger value="done">Resolved ({done.length})</TabsTrigger>
+          <TabsTrigger value="disputes">Disputes ({disputes.filter((d) => d.status === "open").length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="drafts" className="mt-4 space-y-3">
