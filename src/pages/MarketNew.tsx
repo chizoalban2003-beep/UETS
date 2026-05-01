@@ -408,12 +408,45 @@ export default function MarketNew() {
         )}
       </div>
 
-      <div className="mt-6 flex justify-end gap-3">
-        <Button variant="outline" onClick={() => nav("/markets")}>Cancel</Button>
-        <Button onClick={submit} disabled={busy || (mode === "template" && !template) || (mode === "custom" && !testResult?.ok)}>
-          {busy ? "Saving…" : "Save draft → review & stake"}
+      <div className="mt-6 flex items-center justify-between gap-3 flex-wrap">
+        <Button variant="ghost" size="sm" onClick={runReview} disabled={reviewing || !name || rulesMd.length < 20}>
+          <Sparkles className="w-4 h-4 mr-1" />
+          {reviewing ? "Reviewing…" : "Get AI fairness review"}
         </Button>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={() => nav("/markets")}>Cancel</Button>
+          <Button onClick={submit} disabled={busy || (mode === "template" && !template) || (mode === "custom" && !testResult?.ok)}>
+            {busy ? "Saving…" : "Save draft → review & stake"}
+          </Button>
+        </div>
       </div>
+
+      {review && (
+        <Card className="mt-4 p-4 space-y-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Badge variant={review.verdict === "approve" ? "default" : review.verdict === "reject" ? "destructive" : "outline"}>
+              {review.verdict?.toUpperCase()}
+            </Badge>
+            <span className="text-xs text-muted-foreground">Clarity {review.clarity}/10 · Objectivity {review.objectivity}/10 · Safety {review.safety}/10</span>
+          </div>
+          {review.issues?.length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-1">Issues</div>
+              <ul className="text-xs text-muted-foreground list-disc pl-5 space-y-0.5">
+                {review.issues.map((i: string, k: number) => <li key={k}>{i}</li>)}
+              </ul>
+            </div>
+          )}
+          {review.suggestions?.length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-1">Suggestions</div>
+              <ul className="text-xs text-muted-foreground list-disc pl-5 space-y-0.5">
+                {review.suggestions.map((i: string, k: number) => <li key={k}>{i}</li>)}
+              </ul>
+            </div>
+          )}
+        </Card>
+      )}
       <p className="text-xs text-muted-foreground mt-2 text-right">
         After saving you'll lock a creator stake (min $400) on the market page to publish it.
       </p>
