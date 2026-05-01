@@ -70,6 +70,29 @@ export default function MarketNew() {
   const [testing, setTesting] = useState(false);
 
   const [busy, setBusy] = useState(false);
+  const [review, setReview] = useState<any | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+
+  const runReview = async () => {
+    setReviewing(true);
+    setReview(null);
+    try {
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/market-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
+        body: JSON.stringify({
+          name, description, rules_md: rulesMd, resolution_at: resolutionAt,
+          data_source: mode === "template" ? template : { kind: mode, custom_url: customUrl, json_path: jsonPath },
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || "review failed");
+      setReview(j.review);
+    } catch (e: any) {
+      toast.error(e?.message || "Review failed");
+    }
+    setReviewing(false);
+  };
 
   const csvPoints = useMemo(() => parseCsv(csv), [csv]);
   const previewPoints = mode === "csv" ? csvPoints : (testResult?.ok ? syntheticPreview() : []);
