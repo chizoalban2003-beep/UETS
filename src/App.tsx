@@ -19,6 +19,7 @@ import Reports from "./pages/Reports";
 import Goals from "./pages/Goals";
 import Backtest from "./pages/Backtest";
 import Assessment from "./pages/Assessment";
+import Billing from "./pages/Billing";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
               <Route path="/goals" element={<RequireAuth><Goals /></RequireAuth>} />
               <Route path="/backtest" element={<RequireAuth><Backtest /></RequireAuth>} />
               <Route path="/assessment" element={<RequireAuth><Assessment /></RequireAuth>} />
+              <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

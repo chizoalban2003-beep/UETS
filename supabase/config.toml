@@ -14,3 +14,15 @@ verify_jwt = false
 
 [functions.market-review]
 verify_jwt = false
+
+[functions.billing-checkout]
+verify_jwt = false
+
+[functions.billing-portal]
+verify_jwt = false
+
+[functions.payments-webhook]
+verify_jwt = false
+
+[functions.caretaker-scout]
+verify_jwt = false
