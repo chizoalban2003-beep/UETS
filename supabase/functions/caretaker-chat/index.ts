@@ -495,6 +495,19 @@ Deno.serve(async (req) => {
 
   await supabase.from("caretaker_messages").insert({ user_id: user.id, role: "user", content: message });
 
+  // Enforce caretaker daily quota by tier (free 25 / pro 250 / creator_pro 1000).
+  const { error: quotaErr } = await supabase.rpc("consume_caretaker_quota", { _user_id: user.id, _cost: 1 });
+  if (quotaErr) {
+    return new Response(
+      JSON.stringify({
+        error: "quota_exceeded",
+        message: "You've hit today's Caretaker action limit. Upgrade your plan in Billing to keep going.",
+      }),
+      { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+
   const ctx = await getUserContext(supabase, user.id);
   const { data: profile } = await supabase
     .from("profiles")
