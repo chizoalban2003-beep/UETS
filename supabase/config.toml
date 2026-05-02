@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.payments-webhook]
 verify_jwt = false
+
+[functions.caretaker-scout]
+verify_jwt = false
