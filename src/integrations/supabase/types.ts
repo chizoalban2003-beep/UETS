@@ -228,6 +228,24 @@ export type Database = {
         }
         Relationships: []
       }
+      caretaker_usage: {
+        Row: {
+          count: number
+          day: string
+          user_id: string
+        }
+        Insert: {
+          count?: number
+          day: string
+          user_id: string
+        }
+        Update: {
+          count?: number
+          day?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       contracts: {
         Row: {
           created_at: string
@@ -623,6 +641,39 @@ export type Database = {
         }
         Relationships: []
       }
+      subscriptions: {
+        Row: {
+          created_at: string
+          current_period_end: string | null
+          status: Database["public"]["Enums"]["sub_status"]
+          stripe_customer_id: string | null
+          stripe_sub_id: string | null
+          tier: Database["public"]["Enums"]["sub_tier"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_period_end?: string | null
+          status?: Database["public"]["Enums"]["sub_status"]
+          stripe_customer_id?: string | null
+          stripe_sub_id?: string | null
+          tier?: Database["public"]["Enums"]["sub_tier"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_period_end?: string | null
+          status?: Database["public"]["Enums"]["sub_status"]
+          stripe_customer_id?: string | null
+          stripe_sub_id?: string | null
+          tier?: Database["public"]["Enums"]["sub_tier"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       trades: {
         Row: {
           by_bot: boolean
@@ -816,6 +867,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      consume_caretaker_quota: {
+        Args: { _cost?: number; _user_id: string }
+        Returns: number
       }
       detect_concentration_risk: {
         Args: { _market_id: string }
@@ -1050,6 +1105,8 @@ export type Database = {
         | "disputable"
         | "cancelled"
       report_kind: "daily" | "weekly" | "monthly" | "on_demand"
+      sub_status: "active" | "past_due" | "canceled" | "trialing" | "incomplete"
+      sub_tier: "free" | "pro_trader" | "creator_pro"
       suggestion_status:
         | "pending"
         | "accepted"
@@ -1227,6 +1284,8 @@ export const Constants = {
         "cancelled",
       ],
       report_kind: ["daily", "weekly", "monthly", "on_demand"],
+      sub_status: ["active", "past_due", "canceled", "trialing", "incomplete"],
+      sub_tier: ["free", "pro_trader", "creator_pro"],
       suggestion_status: [
         "pending",
         "accepted",
