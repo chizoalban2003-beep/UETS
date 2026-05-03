@@ -13,9 +13,10 @@ function getSupabase() {
   return _supabase;
 }
 
-function priceIdToTier(priceId: string | undefined): "free" | "pro_trader" | "creator_pro" {
+function priceIdToTier(priceId: string | undefined): "free" | "pro_trader" | "creator_pro" | "creator_elite" {
   if (priceId === "pro_trader_monthly") return "pro_trader";
   if (priceId === "creator_pro_monthly") return "creator_pro";
+  if (priceId === "creator_elite_monthly") return "creator_elite";
   return "free";
 }
 

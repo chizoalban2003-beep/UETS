@@ -12,7 +12,7 @@ import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { toast } from "sonner";
 
-type Tier = "free" | "pro_trader" | "creator_pro";
+type Tier = "free" | "pro_trader" | "creator_pro" | "creator_elite";
 
 const TIERS: Array<{
   tier: Tier;
@@ -51,9 +51,18 @@ const TIERS: Array<{
     perks: ["1000 caretaker actions / day", "5 active markets", "60% creator fee share (vs 50%)", "Steward + Advertiser agents"],
     icon: Crown,
   },
+  {
+    tier: "creator_elite",
+    name: "Creator Elite",
+    price: "$39 / mo",
+    priceId: "creator_elite_monthly",
+    blurb: "Power-creators with multi-market portfolios.",
+    perks: ["5000 caretaker actions / day", "10 active markets", "70% creator fee share", "Premium oracles (Kalshi, Polymarket)"],
+    icon: Crown,
+  },
 ];
 
-const TIER_CAPS: Record<Tier, number> = { free: 25, pro_trader: 250, creator_pro: 1000 };
+const TIER_CAPS: Record<Tier, number> = { free: 25, pro_trader: 250, creator_pro: 1000, creator_elite: 5000 };
 
 export default function Billing() {
   const { user } = useAuth();
