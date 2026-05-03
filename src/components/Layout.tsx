@@ -54,6 +54,7 @@ export default function Layout() {
 
           <nav className="hidden md:flex items-center gap-1">
             <NavLink to="/markets" className={linkCls}><LayoutGrid className="w-4 h-4" />Markets</NavLink>
+            <NavLink to="/marketplace" className={linkCls}><LayoutGrid className="w-4 h-4" />Top</NavLink>
             <NavLink to="/markets/new" className={linkCls}><Plus className="w-4 h-4" />Create</NavLink>
             {user && <NavLink to="/markets/mine" className={linkCls}><Briefcase className="w-4 h-4" />My markets</NavLink>}
             <NavLink to="/portfolio" className={linkCls}><Wallet className="w-4 h-4" />Portfolio</NavLink>
