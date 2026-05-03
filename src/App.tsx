@@ -20,6 +20,7 @@ import Goals from "./pages/Goals";
 import Backtest from "./pages/Backtest";
 import Assessment from "./pages/Assessment";
 import Billing from "./pages/Billing";
+import Marketplace from "./pages/Marketplace";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
