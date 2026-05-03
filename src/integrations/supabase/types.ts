@@ -449,10 +449,16 @@ export type Database = {
           creator_stake: number
           data_source_id: string | null
           description: string | null
+          event_oracle_kind:
+            | Database["public"]["Enums"]["event_oracle_kind"]
+            | null
+          event_oracle_ref: string | null
+          event_outcome: boolean | null
           fees_accrued: number
           final_posted_at: string | null
           final_value: number | null
           id: string
+          market_kind: Database["public"]["Enums"]["market_kind"]
           name: string
           payout_claimed_at: string | null
           resolution_at: string
@@ -474,10 +480,16 @@ export type Database = {
           creator_stake?: number
           data_source_id?: string | null
           description?: string | null
+          event_oracle_kind?:
+            | Database["public"]["Enums"]["event_oracle_kind"]
+            | null
+          event_oracle_ref?: string | null
+          event_outcome?: boolean | null
           fees_accrued?: number
           final_posted_at?: string | null
           final_value?: number | null
           id?: string
+          market_kind?: Database["public"]["Enums"]["market_kind"]
           name: string
           payout_claimed_at?: string | null
           resolution_at: string
@@ -499,10 +511,16 @@ export type Database = {
           creator_stake?: number
           data_source_id?: string | null
           description?: string | null
+          event_oracle_kind?:
+            | Database["public"]["Enums"]["event_oracle_kind"]
+            | null
+          event_oracle_ref?: string | null
+          event_outcome?: boolean | null
           fees_accrued?: number
           final_posted_at?: string | null
           final_value?: number | null
           id?: string
+          market_kind?: Database["public"]["Enums"]["market_kind"]
           name?: string
           payout_claimed_at?: string | null
           resolution_at?: string
@@ -845,10 +863,16 @@ export type Database = {
           creator_stake: number
           data_source_id: string | null
           description: string | null
+          event_oracle_kind:
+            | Database["public"]["Enums"]["event_oracle_kind"]
+            | null
+          event_oracle_ref: string | null
+          event_outcome: boolean | null
           fees_accrued: number
           final_posted_at: string | null
           final_value: number | null
           id: string
+          market_kind: Database["public"]["Enums"]["market_kind"]
           name: string
           payout_claimed_at: string | null
           resolution_at: string
@@ -925,10 +949,16 @@ export type Database = {
           creator_stake: number
           data_source_id: string | null
           description: string | null
+          event_oracle_kind:
+            | Database["public"]["Enums"]["event_oracle_kind"]
+            | null
+          event_oracle_ref: string | null
+          event_outcome: boolean | null
           fees_accrued: number
           final_posted_at: string | null
           final_value: number | null
           id: string
+          market_kind: Database["public"]["Enums"]["market_kind"]
           name: string
           payout_claimed_at: string | null
           resolution_at: string
@@ -968,6 +998,46 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      resolve_event_market: {
+        Args: { _market_id: string; _outcome: boolean }
+        Returns: {
+          band_is_pct: boolean
+          band_width: number
+          category: string | null
+          created_at: string
+          creator_id: string
+          creator_stake: number
+          data_source_id: string | null
+          description: string | null
+          event_oracle_kind:
+            | Database["public"]["Enums"]["event_oracle_kind"]
+            | null
+          event_oracle_ref: string | null
+          event_outcome: boolean | null
+          fees_accrued: number
+          final_posted_at: string | null
+          final_value: number | null
+          id: string
+          market_kind: Database["public"]["Enums"]["market_kind"]
+          name: string
+          payout_claimed_at: string | null
+          resolution_at: string
+          resolved_at: string | null
+          rules_md: string
+          status: Database["public"]["Enums"]["market_status"]
+          submitted_at: string | null
+          trend_model: Database["public"]["Enums"]["trend_model"]
+          trend_params: Json
+          unit: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "markets"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       resolve_market: {
         Args: { _final_value: number; _market_id: string }
         Returns: {
@@ -979,10 +1049,16 @@ export type Database = {
           creator_stake: number
           data_source_id: string | null
           description: string | null
+          event_oracle_kind:
+            | Database["public"]["Enums"]["event_oracle_kind"]
+            | null
+          event_oracle_ref: string | null
+          event_outcome: boolean | null
           fees_accrued: number
           final_posted_at: string | null
           final_value: number | null
           id: string
+          market_kind: Database["public"]["Enums"]["market_kind"]
           name: string
           payout_claimed_at: string | null
           resolution_at: string
@@ -1013,10 +1089,16 @@ export type Database = {
           creator_stake: number
           data_source_id: string | null
           description: string | null
+          event_oracle_kind:
+            | Database["public"]["Enums"]["event_oracle_kind"]
+            | null
+          event_oracle_ref: string | null
+          event_outcome: boolean | null
           fees_accrued: number
           final_posted_at: string | null
           final_value: number | null
           id: string
+          market_kind: Database["public"]["Enums"]["market_kind"]
           name: string
           payout_claimed_at: string | null
           resolution_at: string
@@ -1047,10 +1129,16 @@ export type Database = {
           creator_stake: number
           data_source_id: string | null
           description: string | null
+          event_oracle_kind:
+            | Database["public"]["Enums"]["event_oracle_kind"]
+            | null
+          event_oracle_ref: string | null
+          event_outcome: boolean | null
           fees_accrued: number
           final_posted_at: string | null
           final_value: number | null
           id: string
+          market_kind: Database["public"]["Enums"]["market_kind"]
           name: string
           payout_claimed_at: string | null
           resolution_at: string
@@ -1077,8 +1165,9 @@ export type Database = {
       bot_strategy: "mean_reversion" | "momentum" | "custom"
       caretaker_mode: "chat" | "assist" | "autopilot"
       caretaker_role: "system" | "user" | "assistant" | "tool"
-      contract_kind: "distortion" | "snapback"
+      contract_kind: "distortion" | "snapback" | "binary"
       data_source_kind: "manual" | "provider" | "custom_url"
+      event_oracle_kind: "manual" | "kalshi" | "polymarket" | "sports_api"
       goal_status: "active" | "achieved" | "failed" | "cancelled"
       ledger_reason:
         | "signup_bonus"
@@ -1095,6 +1184,7 @@ export type Database = {
         | "dispute_bond"
         | "dispute_refund"
         | "cancel_refund"
+      market_kind: "time_series" | "event"
       market_status:
         | "open"
         | "resolving"
@@ -1106,7 +1196,7 @@ export type Database = {
         | "cancelled"
       report_kind: "daily" | "weekly" | "monthly" | "on_demand"
       sub_status: "active" | "past_due" | "canceled" | "trialing" | "incomplete"
-      sub_tier: "free" | "pro_trader" | "creator_pro"
+      sub_tier: "free" | "pro_trader" | "creator_pro" | "creator_elite"
       suggestion_status:
         | "pending"
         | "accepted"
@@ -1254,8 +1344,9 @@ export const Constants = {
       bot_strategy: ["mean_reversion", "momentum", "custom"],
       caretaker_mode: ["chat", "assist", "autopilot"],
       caretaker_role: ["system", "user", "assistant", "tool"],
-      contract_kind: ["distortion", "snapback"],
+      contract_kind: ["distortion", "snapback", "binary"],
       data_source_kind: ["manual", "provider", "custom_url"],
+      event_oracle_kind: ["manual", "kalshi", "polymarket", "sports_api"],
       goal_status: ["active", "achieved", "failed", "cancelled"],
       ledger_reason: [
         "signup_bonus",
@@ -1273,6 +1364,7 @@ export const Constants = {
         "dispute_refund",
         "cancel_refund",
       ],
+      market_kind: ["time_series", "event"],
       market_status: [
         "open",
         "resolving",
@@ -1285,7 +1377,7 @@ export const Constants = {
       ],
       report_kind: ["daily", "weekly", "monthly", "on_demand"],
       sub_status: ["active", "past_due", "canceled", "trialing", "incomplete"],
-      sub_tier: ["free", "pro_trader", "creator_pro"],
+      sub_tier: ["free", "pro_trader", "creator_pro", "creator_elite"],
       suggestion_status: [
         "pending",
         "accepted",
