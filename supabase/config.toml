@@ -26,3 +26,9 @@ verify_jwt = false
 
 [functions.caretaker-scout]
 verify_jwt = false
+
+[functions.event-resolve]
+verify_jwt = false
+
+[functions.caretaker-fairness]
+verify_jwt = false
