@@ -89,6 +89,28 @@ async function fetchNasaCO2(_params: any): Promise<{ ts: number; value: number }
   return { ts: Date.now(), value: v };
 }
 
+async function fetchKalshi(params: any): Promise<{ ts: number; value: number }> {
+  // params: { ticker } — returns YES price 0..1
+  const ticker = String(params.ticker);
+  const r = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets/${ticker}`);
+  if (!r.ok) throw new Error(`kalshi ${r.status}`);
+  const j = await r.json();
+  const cents = j?.market?.yes_bid ?? j?.market?.last_price;
+  if (typeof cents !== "number") throw new Error("kalshi: yes price missing");
+  return { ts: Date.now(), value: cents / 100 };
+}
+
+async function fetchTwelveData(params: any): Promise<{ ts: number; value: number }> {
+  const symbol = String(params.symbol);
+  const key = Deno.env.get("TWELVEDATA_API_KEY") || "demo";
+  const r = await fetch(`https://api.twelvedata.com/price?symbol=${symbol}&apikey=${key}`);
+  if (!r.ok) throw new Error(`twelvedata ${r.status}`);
+  const j = await r.json();
+  const v = Number(j?.price);
+  if (!Number.isFinite(v)) throw new Error(`twelvedata: ${j?.message || "price missing"}`);
+  return { ts: Date.now(), value: v };
+}
+
 async function fetchPolymarket(params: any): Promise<{ ts: number; value: number }> {
   // params: { token_id }  — last trade price 0..1
   const id = String(params.token_id);
