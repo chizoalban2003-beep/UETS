@@ -37,6 +37,7 @@ const App = () => (
               <Route path="/" element={<Landing />} />
               <Route path="/auth" element={<Auth />} />
               <Route path="/markets" element={<Markets />} />
+              <Route path="/marketplace" element={<Marketplace />} />
               <Route path="/markets/new" element={<RequireAuth><MarketNew /></RequireAuth>} />
               <Route path="/markets/mine" element={<RequireAuth><MarketsMine /></RequireAuth>} />
               <Route path="/markets/:id" element={<MarketDetail />} />
