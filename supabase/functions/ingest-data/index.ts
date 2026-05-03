@@ -151,6 +151,8 @@ async function fetchOne(src: Source): Promise<{ ts: number; value: number }> {
     case "github": return fetchGitHub(src.provider_params);
     case "nasa-co2": return fetchNasaCO2(src.provider_params);
     case "polymarket": return fetchPolymarket(src.provider_params);
+    case "kalshi": return fetchKalshi(src.provider_params);
+    case "twelvedata": return fetchTwelveData(src.provider_params);
     default: throw new Error(`unknown provider: ${src.provider}`);
   }
 }
