@@ -1,7 +1,7 @@
 // Templates and provider definitions for one-click market creation.
 import type { TrendModel } from "./trend";
 
-export type ProviderId = "coingecko" | "yahoo" | "open-meteo" | "github" | "nasa-co2" | "polymarket";
+export type ProviderId = "coingecko" | "yahoo" | "open-meteo" | "github" | "nasa-co2" | "polymarket" | "kalshi" | "twelvedata";
 
 export type Template = {
   id: string;
