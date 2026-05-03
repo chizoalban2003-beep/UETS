@@ -68,6 +68,30 @@ export const TEMPLATES: Template[] = [
     unit: "stars", trend_model: "log_linear", band_width: 2, band_is_pct: true,
     provider: "github", provider_params: { repo: "facebook/react", metric: "stargazers_count" },
     fetch_interval_minutes: 60 * 6, description: "Star-count distortion on React." },
+
+  // Markets (eToro-style via Twelve Data)
+  { id: "spy", category: "Markets", label: "S&P 500 ETF (SPY)",
+    unit: "USD", trend_model: "ewma", band_width: 4, band_is_pct: true,
+    provider: "twelvedata", provider_params: { symbol: "SPY" },
+    fetch_interval_minutes: 60, description: "Track distortion on the S&P 500." },
+  { id: "qqq", category: "Markets", label: "Nasdaq 100 ETF (QQQ)",
+    unit: "USD", trend_model: "ewma", band_width: 5, band_is_pct: true,
+    provider: "twelvedata", provider_params: { symbol: "QQQ" },
+    fetch_interval_minutes: 60, description: "Distortion on the Nasdaq 100." },
+  { id: "eurusd", category: "Markets", label: "EUR / USD",
+    unit: "USD", trend_model: "ewma", band_width: 2, band_is_pct: true,
+    provider: "twelvedata", provider_params: { symbol: "EUR/USD" },
+    fetch_interval_minutes: 60, description: "FX distortion on EUR/USD." },
+
+  // Prediction-market mirrors
+  { id: "kalshi-fed", category: "Prediction", label: "Kalshi: Fed rate cut Jan",
+    unit: "p(YES)", trend_model: "ewma", band_width: 10, band_is_pct: true,
+    provider: "kalshi", provider_params: { ticker: "FEDDECISION-26JAN-C0.25" },
+    fetch_interval_minutes: 30, description: "Mirror a Kalshi political market." },
+  { id: "poly-sample", category: "Prediction", label: "Polymarket sample",
+    unit: "p(YES)", trend_model: "ewma", band_width: 10, band_is_pct: true,
+    provider: "polymarket", provider_params: { token_id: "0" },
+    fetch_interval_minutes: 30, description: "Mirror a Polymarket prediction." },
 ];
 
 export function templateById(id: string) {
@@ -81,4 +105,6 @@ export const PROVIDER_LABELS: Record<ProviderId, string> = {
   "github": "GitHub",
   "nasa-co2": "NOAA Mauna Loa",
   "polymarket": "Polymarket",
+  "kalshi": "Kalshi",
+  "twelvedata": "Twelve Data",
 };
