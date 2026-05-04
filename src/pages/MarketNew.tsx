@@ -151,7 +151,34 @@ export default function MarketNew() {
     let dataSourceId: string | null = null;
 
     try {
-      if (mode === "template" && template) {
+      if (marketKind === "event") {
+        if (eventOracle !== "manual" && !eventOracleRef.trim()) {
+          setBusy(false);
+          return toast.error("Provide an oracle reference (ticker / token id)");
+        }
+        if (eventOracle === "manual" && rulesMd.trim().length < 60) {
+          setBusy(false);
+          return toast.error("Manual oracle requires detailed rules (60+ chars)");
+        }
+        if (eventOracle === "kalshi" || eventOracle === "polymarket") {
+          const params = eventOracle === "kalshi"
+            ? { ticker: eventOracleRef.trim() }
+            : { token_id: eventOracleRef.trim() };
+          const { data: ds, error: dsErr } = await supabase
+            .from("data_sources")
+            .insert({
+              creator_id: user.id,
+              kind: "provider",
+              provider: eventOracle,
+              provider_params: params as any,
+              fetch_interval_minutes: 30,
+            })
+            .select()
+            .single();
+          if (dsErr || !ds) throw dsErr;
+          dataSourceId = ds.id;
+        }
+      } else if (mode === "template" && template) {
         const { data: ds, error: dsErr } = await supabase
           .from("data_sources")
           .insert({
@@ -200,8 +227,8 @@ export default function MarketNew() {
           creator_id: user.id,
           name,
           description: description || null,
-          category,
-          unit,
+          category: marketKind === "event" ? (category || "Event") : category,
+          unit: marketKind === "event" ? "p(YES)" : unit,
           trend_model: model,
           band_width: bandWidth,
           band_is_pct: bandIsPct,
@@ -209,22 +236,23 @@ export default function MarketNew() {
           data_source_id: dataSourceId,
           rules_md: rulesMd,
           status: "draft" as any,
+          market_kind: marketKind as any,
+          event_oracle_kind: marketKind === "event" ? (eventOracle as any) : null,
+          event_oracle_ref: marketKind === "event" ? (eventOracleRef.trim() || null) : null,
         })
         .select()
         .single();
       if (error || !market) throw error;
 
       // Seed initial data point(s)
-      if (mode === "csv") {
+      if (marketKind === "time_series" && mode === "csv") {
         const rows = csvPoints.map((p) => ({
           market_id: market.id,
           ts: new Date(p.ts).toISOString(),
           value: p.value,
         }));
         await supabase.from("market_data_points").insert(rows);
-      } else {
-        // Trigger an immediate ingest so the new market has at least one live point
-        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ingest-data`, {
+      } else if (dataSourceId) {
           method: "POST",
           headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
         }).catch(() => {});
