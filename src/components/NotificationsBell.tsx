@@ -25,23 +25,48 @@ export default function NotificationsBell() {
 
   const load = async () => {
     if (!user) return;
-    const { data } = await supabase
-      .from("caretaker_events")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(20);
-    setEvents((data as Event[]) || []);
+    const [{ data: ce }, { data: nots }] = await Promise.all([
+      supabase
+        .from("caretaker_events")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+    const merged: Event[] = [
+      ...((ce as any[]) || []),
+      ...(((nots as any[]) || []).map((n) => ({
+        id: `n_${n.id}`,
+        title: n.title,
+        body_md: n.body || "",
+        kind: n.kind,
+        market_id: n.payload?.market_id || null,
+        read_at: n.read_at,
+        created_at: n.created_at,
+      }))),
+    ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    setEvents(merged.slice(0, 30));
   };
 
   useEffect(() => {
     if (!user) return;
     load();
     const ch = supabase
-      .channel("ct-events")
+      .channel("ct-events-and-notifs")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "caretaker_events", filter: `user_id=eq.${user.id}` },
+        load,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${user.id}` },
         load,
       )
       .subscribe();

@@ -67,6 +67,28 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ message: `__execute_create_market:${args.template_id}:${args.resolution_days || 14}:${args.rationale || ""}` }),
       });
       result = { ok: r.ok, status: r.status };
+    } else if (tool_name === "schedule_alert") {
+      const { data, error } = await supabase.from("caretaker_alerts").insert({
+        user_id: user.id, market_id: args.market_id, condition: args.condition, label: args.label || null,
+      }).select().single();
+      result = error ? { error: error.message } : { ok: true, alert: data };
+    } else if (tool_name === "remember") {
+      const { error } = await supabase.from("caretaker_memory").upsert({
+        user_id: user.id, key: args.key, value: args.value, updated_at: new Date().toISOString(),
+      });
+      result = error ? { error: error.message } : { ok: true };
+    } else if (tool_name === "forget") {
+      const { error } = await supabase.from("caretaker_memory").delete().eq("user_id", user.id).eq("key", args.key);
+      result = error ? { error: error.message } : { ok: true };
+    } else if (tool_name === "pause_bot") {
+      const { error } = await supabase.from("bots").update({ mode: "off" }).eq("user_id", user.id);
+      result = error ? { error: error.message } : { ok: true };
+    } else if (tool_name === "resume_bot") {
+      const { error } = await supabase.from("bots").update({ mode: "suggest" }).eq("user_id", user.id);
+      result = error ? { error: error.message } : { ok: true };
+    } else if (tool_name === "request_payout") {
+      const { data, error } = await userClient.rpc("payout_creator", { _market_id: args.market_id });
+      result = error ? { error: error.message } : { ok: true, market: data };
     } else if (tool_name === "generate_report") {
       const r = await fetch(`${SUPABASE_URL}/functions/v1/generate-report`, {
         method: "POST", headers: { "Content-Type": "application/json" },

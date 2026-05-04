@@ -8,8 +8,18 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
-const READ_ONLY_TOOLS = new Set(["get_portfolio", "get_market_snapshot", "list_top_markets", "list_goals", "run_backtest", "suggest_hedges", "explain_concept", "list_briefings"]);
-const MUTATING_TOOLS = new Set(["place_trade", "create_market_from_template", "update_bot_config", "set_goal", "generate_report", "reset_paper_balance"]);
+const READ_ONLY_TOOLS = new Set([
+  "get_portfolio", "get_market_snapshot", "list_top_markets", "list_goals",
+  "run_backtest", "suggest_hedges", "explain_concept", "list_briefings",
+  "search_markets", "analyze_market", "analyze_portfolio", "simulate_trade",
+  "draft_market", "list_alerts", "list_notifications",
+]);
+const MUTATING_TOOLS = new Set([
+  "place_trade", "create_market_from_template", "update_bot_config", "set_goal",
+  "generate_report", "reset_paper_balance",
+  "schedule_alert", "delete_alert", "remember", "forget",
+  "pause_bot", "resume_bot", "request_payout",
+]);
 
 const TOOLS = [
   {
@@ -194,6 +204,174 @@ const TOOLS = [
         type: "object",
         properties: { limit: { type: "number", description: "default 5" } },
         additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_markets",
+      description: "Search live markets by keyword/category/status. Returns up to 20 matches.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string" },
+          category: { type: "string" },
+          status: { type: "string", enum: ["draft", "open", "pending_resolution", "disputable", "resolved", "cancelled"] },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "analyze_market",
+      description: "Deep analysis of a single market: latest data, distortion estimate, contract prices, position concentration flags, and a textual brief. Use before suggesting trades.",
+      parameters: {
+        type: "object",
+        properties: { market_id: { type: "string" } },
+        required: ["market_id"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "analyze_portfolio",
+      description: "Portfolio analysis: P&L, exposure by category, risk concentration, suggested rebalances. Read-only.",
+      parameters: {
+        type: "object",
+        properties: { window_days: { type: "number", description: "default 30" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "simulate_trade",
+      description: "Dry-run a trade: returns expected price, slippage, post-trade prob_yes, and worst/best case payouts. No state changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          contract_id: { type: "string" },
+          side: { type: "string", enum: ["buy_yes", "buy_no", "sell_yes", "sell_no"] },
+          shares: { type: "number" },
+        },
+        required: ["contract_id", "side", "shares"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "draft_market",
+      description: "Generate a market draft (name, rules_md, suggested oracle, resolution_at) from a freeform idea. Returns a structured proposal that the user can publish via /markets/new.",
+      parameters: {
+        type: "object",
+        properties: { idea: { type: "string" }, days_to_resolve: { type: "number", description: "default 14" } },
+        required: ["idea"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "schedule_alert",
+      description: "Create an alert that fires when a market crosses a threshold. Condition: { kind: 'price_above'|'price_below'|'distortion_above', value: number }.",
+      parameters: {
+        type: "object",
+        properties: {
+          market_id: { type: "string" },
+          label: { type: "string" },
+          condition: { type: "object" },
+        },
+        required: ["market_id", "condition"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_alerts",
+      description: "List the user's active alerts.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_alert",
+      description: "Deactivate an alert by id.",
+      parameters: {
+        type: "object",
+        properties: { alert_id: { type: "string" } },
+        required: ["alert_id"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_notifications",
+      description: "List the user's recent in-app notifications.",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number" }, unread_only: { type: "boolean" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remember",
+      description: "Save a small preference / fact about the user (e.g. 'risk_tolerance' = 'low'). Use sparingly for things that affect future suggestions.",
+      parameters: {
+        type: "object",
+        properties: { key: { type: "string" }, value: { type: "string" } },
+        required: ["key", "value"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "forget",
+      description: "Forget a previously remembered key.",
+      parameters: {
+        type: "object",
+        properties: { key: { type: "string" } },
+        required: ["key"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "pause_bot",
+      description: "Pause the trading bot (sets mode to 'off').",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "resume_bot",
+      description: "Resume the trading bot (sets mode to 'suggest').",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "request_payout",
+      description: "Claim creator payout (stake + fee share) for a resolved market the user created.",
+      parameters: {
+        type: "object",
+        properties: { market_id: { type: "string" } },
+        required: ["market_id"], additionalProperties: false,
       },
     },
   },
@@ -455,6 +633,130 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
       .limit(args.limit || 5);
     return { briefings: data || [] };
   }
+  if (name === "search_markets") {
+    let q = supabase.from("markets").select("id,name,category,unit,status,market_kind,resolution_at").limit(20);
+    if (args.status) q = q.eq("status", args.status); else q = q.in("status", ["open","pending_resolution","disputable"]);
+    if (args.category) q = q.eq("category", args.category);
+    if (args.query) q = q.ilike("name", `%${args.query}%`);
+    const { data } = await q;
+    return { markets: data || [] };
+  }
+  if (name === "analyze_market") {
+    const { data: m } = await supabase.from("markets").select("*").eq("id", args.market_id).maybeSingle();
+    if (!m) return { error: "market not found" };
+    const { data: pts } = await supabase.from("market_data_points").select("ts,value").eq("market_id", args.market_id).order("ts", { ascending: false }).limit(60);
+    const { data: cts } = await supabase.from("contracts").select("*").eq("market_id", args.market_id);
+    const { data: conc } = await supabase.rpc("detect_concentration_risk", { _market_id: args.market_id });
+    const series = (pts || []).map((p: any) => Number(p.value)).reverse();
+    const trend = series.length ? series.reduce((a,b)=>a+b,0)/series.length : null;
+    const last = series[series.length-1] ?? null;
+    const band = m.band_is_pct ? Math.abs(trend ?? 0) * (Number(m.band_width)/100) : Number(m.band_width);
+    const distortion = trend != null && last != null ? Math.max(0, (Math.abs(last-trend) - band)/(2*Math.max(band,1e-6))) : null;
+    return {
+      name: m.name, status: m.status, market_kind: m.market_kind, unit: m.unit,
+      latest: last, trend, band, distortion_estimate: distortion,
+      contracts: (cts||[]).map((c:any)=>({id:c.id, kind:c.kind, prob_yes: Number(c.reserve_no)/(Number(c.reserve_yes)+Number(c.reserve_no))})),
+      concentration_flags: conc || [],
+    };
+  }
+  if (name === "analyze_portfolio") {
+    const days = args.window_days || 30;
+    const since = new Date(Date.now() - days*86400000).toISOString();
+    const { data: trades } = await supabase.from("trades").select("*,contracts(market_id,markets(name,category))").eq("user_id", userId).gte("created_at", since);
+    const { data: positions } = await supabase.from("positions").select("*,contracts(market_id,reserve_yes,reserve_no,markets(name,category))").eq("user_id", userId);
+    const realized = (trades||[]).reduce((a:number,t:any)=>a+(t.side?.startsWith("sell")?Number(t.cost):-Number(t.cost)-Number(t.fee||0)),0);
+    const byCategory: Record<string, number> = {};
+    for (const p of positions || []) {
+      const cat = p.contracts?.markets?.category || "Other";
+      const exposure = (Number(p.yes_shares)+Number(p.no_shares));
+      byCategory[cat] = (byCategory[cat]||0) + exposure;
+    }
+    const totalExposure = Object.values(byCategory).reduce((a,b)=>a+b,0);
+    const concentrated = Object.entries(byCategory).filter(([,v])=>totalExposure>0 && v/totalExposure > 0.5).map(([k,v])=>({category:k, share_pct: Math.round(v/totalExposure*100)}));
+    return { window_days: days, realized_pnl: realized, trade_count: trades?.length || 0, exposure_by_category: byCategory, concentration_warnings: concentrated };
+  }
+  if (name === "simulate_trade") {
+    const { data: c } = await supabase.from("contracts").select("*").eq("id", args.contract_id).maybeSingle();
+    if (!c) return { error: "contract not found" };
+    const ry = Number(c.reserve_yes), rn = Number(c.reserve_no), k = ry*rn, s = Number(args.shares);
+    let newYes=ry, newNo=rn, gross=0;
+    try {
+      if (args.side === "buy_yes") { newYes = ry-s; if (newYes<=0) return {error:"insufficient liquidity"}; newNo = k/newYes; gross = newNo-rn; }
+      else if (args.side === "buy_no") { newNo = rn-s; if (newNo<=0) return {error:"insufficient liquidity"}; newYes = k/newNo; gross = newYes-ry; }
+      else if (args.side === "sell_yes") { newYes = ry+s; newNo = k/newYes; gross = rn-newNo; }
+      else if (args.side === "sell_no") { newNo = rn+s; newYes = k/newNo; gross = ry-newYes; }
+    } catch (e:any) { return { error: String(e?.message||e) }; }
+    const fee = Math.abs(gross) * (c.fee_bps||100)/10000;
+    const cost = args.side.startsWith("buy") ? gross+fee : gross-fee;
+    return {
+      avg_price: gross/s, total_cost: cost, fee, post_prob_yes: newNo/(newYes+newNo),
+      slippage_pct: ((Math.abs(gross/s) - rn/(ry+rn))/(rn/(ry+rn))*100),
+    };
+  }
+  if (name === "draft_market") {
+    const days = args.days_to_resolve || 14;
+    const resolution = new Date(Date.now() + days*86400000).toISOString();
+    return {
+      draft: {
+        name: args.idea.slice(0, 80),
+        rules_md: `Resolves on ${new Date(resolution).toUTCString()}.\n\nIdea: ${args.idea}\n\nProvide a clear yes/no resolution criterion before publishing. The market should be unambiguous and verifiable from a public source.`,
+        suggested_oracle: "manual",
+        market_kind: "event",
+        resolution_at: resolution,
+      },
+      next_step: "Open /markets/new and paste these fields, then refine before publishing.",
+    };
+  }
+  if (name === "schedule_alert") {
+    const { data, error } = await supabase.from("caretaker_alerts").insert({
+      user_id: userId, market_id: args.market_id, condition: args.condition, label: args.label || null,
+    }).select().single();
+    if (error) return { error: error.message };
+    return { ok: true, alert: data };
+  }
+  if (name === "list_alerts") {
+    const { data } = await supabase.from("caretaker_alerts").select("*").eq("user_id", userId).eq("active", true).order("created_at",{ascending:false});
+    return { alerts: data || [] };
+  }
+  if (name === "delete_alert") {
+    const { error } = await supabase.from("caretaker_alerts").update({ active: false }).eq("id", args.alert_id).eq("user_id", userId);
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
+  if (name === "list_notifications") {
+    let q = supabase.from("notifications").select("*").eq("user_id", userId).order("created_at",{ascending:false}).limit(args.limit || 10);
+    if (args.unread_only) q = q.is("read_at", null);
+    const { data } = await q;
+    return { notifications: data || [] };
+  }
+  if (name === "remember") {
+    const { error } = await supabase.from("caretaker_memory").upsert({ user_id: userId, key: args.key, value: args.value, updated_at: new Date().toISOString() });
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
+  if (name === "forget") {
+    const { error } = await supabase.from("caretaker_memory").delete().eq("user_id", userId).eq("key", args.key);
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
+  if (name === "pause_bot") {
+    const { error } = await supabase.from("bots").update({ mode: "off" }).eq("user_id", userId);
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
+  if (name === "resume_bot") {
+    const { error } = await supabase.from("bots").update({ mode: "suggest" }).eq("user_id", userId);
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
+  if (name === "request_payout") {
+    const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: `Bearer ${args._user_jwt}` } },
+    });
+    const { data, error } = await userClient.rpc("payout_creator", { _market_id: args.market_id });
+    if (error) return { error: error.message };
+    return { ok: true, market: data };
+  }
   return { error: `unknown tool ${name}` };
 }
 function pearson(a: number[], b: number[]): number | null {
@@ -511,7 +813,7 @@ Deno.serve(async (req) => {
   const ctx = await getUserContext(supabase, user.id);
   const { data: profile } = await supabase
     .from("profiles")
-    .select("skill_level,caretaker_mode,display_name,caretaker_name,caretaker_voice,caretaker_language")
+    .select("skill_level,caretaker_mode,display_name,caretaker_name,caretaker_voice,caretaker_language,caretaker_persona")
     .eq("id", user.id)
     .maybeSingle();
   const skill = (profile?.skill_level as string) || "beginner";
@@ -519,6 +821,11 @@ Deno.serve(async (req) => {
   const cname = ((profile as any)?.caretaker_name as string) || "Caretaker";
   const cvoice = ((profile as any)?.caretaker_voice as string) || "calm";
   const clang = ((profile as any)?.caretaker_language as string) || "en";
+  const cpersona = ((profile as any)?.caretaker_persona as string) || "coach";
+  const { data: memRows } = await supabase.from("caretaker_memory").select("key,value").eq("user_id", user.id).limit(40);
+  const memoryBlock = (memRows && memRows.length)
+    ? memRows.map((m: any) => `- ${m.key}: ${m.value}`).join("\n")
+    : "(no saved preferences yet)";
 
   const { data: history } = await supabase.from("caretaker_messages")
     .select("role,content,tool_calls,tool_call_id,result")
@@ -568,6 +875,13 @@ Current user state:
 - Active goals: ${ctx.goals.length ? ctx.goals.map((g: any) => g.title).join(", ") : "none"}
 
 How markets work: each market tracks a real-world series with a "trend" (linear/EWMA/Bollinger/seasonal/log_linear) and an elasticity band. Two contracts per market: DISTORTION (pays out proportional to how far the value ends up outside the band) and SNAPBACK (binary: does it finish inside the band?). Constant-product AMM with a small fee.
+
+Persona: ${cpersona}. ${({coach:"You are a patient teacher; explain before acting; ask one short question at the end.", analyst:"You are a data-driven analyst; lead with numbers, charts, distributions; cite tool outputs.", trader:"You are a fast-talking trader; terse, direct, propose specific trades with sizes; minimize fluff.", creator:"You are a market-design partner; focus on rules clarity, oracle choice, fee strategy, fairness."} as Record<string,string>)[cpersona] || ""}
+
+Saved user preferences (use them when relevant):
+${memoryBlock}
+
+You have many tools. ALWAYS prefer calling read-only tools (search_markets, analyze_market, analyze_portfolio, simulate_trade) BEFORE proposing actions. Chain tools when useful. Use \`remember\` when the user states a durable preference.
 
 Lead with insight, then action. Keep messages tight. Use markdown.`;
 
@@ -635,7 +949,7 @@ Lead with insight, then action. Keep messages tight. Use markdown.`;
       };
 
       try {
-        for (let step = 0; step < 5; step++) {
+        for (let step = 0; step < 8; step++) {
           const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
