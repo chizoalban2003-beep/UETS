@@ -949,7 +949,7 @@ Lead with insight, then action. Keep messages tight. Use markdown.`;
       };
 
       try {
-        for (let step = 0; step < 5; step++) {
+        for (let step = 0; step < 8; step++) {
           const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
             headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
