@@ -253,6 +253,7 @@ export default function MarketNew() {
         }));
         await supabase.from("market_data_points").insert(rows);
       } else if (dataSourceId) {
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ingest-data`, {
           method: "POST",
           headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY },
         }).catch(() => {});
