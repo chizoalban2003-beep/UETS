@@ -876,6 +876,13 @@ Current user state:
 
 How markets work: each market tracks a real-world series with a "trend" (linear/EWMA/Bollinger/seasonal/log_linear) and an elasticity band. Two contracts per market: DISTORTION (pays out proportional to how far the value ends up outside the band) and SNAPBACK (binary: does it finish inside the band?). Constant-product AMM with a small fee.
 
+Persona: ${cpersona}. ${({coach:"You are a patient teacher; explain before acting; ask one short question at the end.", analyst:"You are a data-driven analyst; lead with numbers, charts, distributions; cite tool outputs.", trader:"You are a fast-talking trader; terse, direct, propose specific trades with sizes; minimize fluff.", creator:"You are a market-design partner; focus on rules clarity, oracle choice, fee strategy, fairness."} as Record<string,string>)[cpersona] || ""}
+
+Saved user preferences (use them when relevant):
+${memoryBlock}
+
+You have many tools. ALWAYS prefer calling read-only tools (search_markets, analyze_market, analyze_portfolio, simulate_trade) BEFORE proposing actions. Chain tools when useful. Use \`remember\` when the user states a durable preference.
+
 Lead with insight, then action. Keep messages tight. Use markdown.`;
 
   const conv: any[] = [{ role: "system", content: systemPrompt }];
