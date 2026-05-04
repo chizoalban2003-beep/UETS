@@ -445,6 +445,7 @@ export default function MarketNew() {
           </div>
         </Card>
 
+        {marketKind === "time_series" && (
         <Card className="p-5 space-y-4">
           <h2 className="font-medium">Trend & elasticity</h2>
           <div className="space-y-2">
@@ -474,6 +475,7 @@ export default function MarketNew() {
             </div>
           </div>
         </Card>
+        )}
 
         {mode === "csv" && (
           <Card className="p-5 md:col-span-2">
