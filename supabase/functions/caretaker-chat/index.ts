@@ -207,6 +207,174 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "search_markets",
+      description: "Search live markets by keyword/category/status. Returns up to 20 matches.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string" },
+          category: { type: "string" },
+          status: { type: "string", enum: ["draft", "open", "pending_resolution", "disputable", "resolved", "cancelled"] },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "analyze_market",
+      description: "Deep analysis of a single market: latest data, distortion estimate, contract prices, position concentration flags, and a textual brief. Use before suggesting trades.",
+      parameters: {
+        type: "object",
+        properties: { market_id: { type: "string" } },
+        required: ["market_id"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "analyze_portfolio",
+      description: "Portfolio analysis: P&L, exposure by category, risk concentration, suggested rebalances. Read-only.",
+      parameters: {
+        type: "object",
+        properties: { window_days: { type: "number", description: "default 30" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "simulate_trade",
+      description: "Dry-run a trade: returns expected price, slippage, post-trade prob_yes, and worst/best case payouts. No state changes.",
+      parameters: {
+        type: "object",
+        properties: {
+          contract_id: { type: "string" },
+          side: { type: "string", enum: ["buy_yes", "buy_no", "sell_yes", "sell_no"] },
+          shares: { type: "number" },
+        },
+        required: ["contract_id", "side", "shares"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "draft_market",
+      description: "Generate a market draft (name, rules_md, suggested oracle, resolution_at) from a freeform idea. Returns a structured proposal that the user can publish via /markets/new.",
+      parameters: {
+        type: "object",
+        properties: { idea: { type: "string" }, days_to_resolve: { type: "number", description: "default 14" } },
+        required: ["idea"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "schedule_alert",
+      description: "Create an alert that fires when a market crosses a threshold. Condition: { kind: 'price_above'|'price_below'|'distortion_above', value: number }.",
+      parameters: {
+        type: "object",
+        properties: {
+          market_id: { type: "string" },
+          label: { type: "string" },
+          condition: { type: "object" },
+        },
+        required: ["market_id", "condition"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_alerts",
+      description: "List the user's active alerts.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_alert",
+      description: "Deactivate an alert by id.",
+      parameters: {
+        type: "object",
+        properties: { alert_id: { type: "string" } },
+        required: ["alert_id"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_notifications",
+      description: "List the user's recent in-app notifications.",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number" }, unread_only: { type: "boolean" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remember",
+      description: "Save a small preference / fact about the user (e.g. 'risk_tolerance' = 'low'). Use sparingly for things that affect future suggestions.",
+      parameters: {
+        type: "object",
+        properties: { key: { type: "string" }, value: { type: "string" } },
+        required: ["key", "value"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "forget",
+      description: "Forget a previously remembered key.",
+      parameters: {
+        type: "object",
+        properties: { key: { type: "string" } },
+        required: ["key"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "pause_bot",
+      description: "Pause the trading bot (sets mode to 'off').",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "resume_bot",
+      description: "Resume the trading bot (sets mode to 'suggest').",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "request_payout",
+      description: "Claim creator payout (stake + fee share) for a resolved market the user created.",
+      parameters: {
+        type: "object",
+        properties: { market_id: { type: "string" } },
+        required: ["market_id"], additionalProperties: false,
+      },
+    },
+  },
 ];
 
 async function getUserContext(supabase: any, userId: string) {
