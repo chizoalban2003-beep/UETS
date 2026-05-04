@@ -267,6 +267,26 @@ export default function CaretakerDock() {
             )}
           </div>
 
+          {messages.length === 0 && (
+            <div className="px-2 pb-1 flex flex-wrap gap-1">
+              {[
+                "Review my portfolio",
+                "Find a market for me",
+                "Explain my last loss",
+                "Run fairness check",
+                "Pause bot",
+                "Draft a market about…",
+              ].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setInput(s)}
+                  className="text-[10px] px-2 py-1 rounded-full border border-border hover:bg-secondary"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="border-t border-border p-2 flex gap-1.5">
             <Input
               value={input}
