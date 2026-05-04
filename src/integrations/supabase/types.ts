@@ -153,6 +153,39 @@ export type Database = {
         }
         Relationships: []
       }
+      caretaker_alerts: {
+        Row: {
+          active: boolean
+          condition: Json
+          created_at: string
+          id: string
+          label: string | null
+          last_fired_at: string | null
+          market_id: string | null
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          condition?: Json
+          created_at?: string
+          id?: string
+          label?: string | null
+          last_fired_at?: string | null
+          market_id?: string | null
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          condition?: Json
+          created_at?: string
+          id?: string
+          label?: string | null
+          last_fired_at?: string | null
+          market_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       caretaker_events: {
         Row: {
           body_md: string
@@ -186,6 +219,27 @@ export type Database = {
           read_at?: string | null
           title?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      caretaker_memory: {
+        Row: {
+          key: string
+          updated_at: string
+          user_id: string
+          value: string
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          user_id: string
+          value: string
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          user_id?: string
+          value?: string
         }
         Relationships: []
       }
@@ -543,6 +597,39 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          kind: string
+          payload: Json
+          read_at: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          kind: string
+          payload?: Json
+          read_at?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          kind?: string
+          payload?: Json
+          read_at?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       positions: {
         Row: {
           contract_id: string
@@ -590,6 +677,7 @@ export type Database = {
           caretaker_language: string
           caretaker_mode: string
           caretaker_name: string
+          caretaker_persona: string
           caretaker_voice: string
           created_at: string
           display_name: string | null
@@ -602,6 +690,7 @@ export type Database = {
           caretaker_language?: string
           caretaker_mode?: string
           caretaker_name?: string
+          caretaker_persona?: string
           caretaker_voice?: string
           created_at?: string
           display_name?: string | null
@@ -614,6 +703,7 @@ export type Database = {
           caretaker_language?: string
           caretaker_mode?: string
           caretaker_name?: string
+          caretaker_persona?: string
           caretaker_voice?: string
           created_at?: string
           display_name?: string | null
