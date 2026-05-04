@@ -813,7 +813,7 @@ Deno.serve(async (req) => {
   const ctx = await getUserContext(supabase, user.id);
   const { data: profile } = await supabase
     .from("profiles")
-    .select("skill_level,caretaker_mode,display_name,caretaker_name,caretaker_voice,caretaker_language")
+    .select("skill_level,caretaker_mode,display_name,caretaker_name,caretaker_voice,caretaker_language,caretaker_persona")
     .eq("id", user.id)
     .maybeSingle();
   const skill = (profile?.skill_level as string) || "beginner";
@@ -821,6 +821,11 @@ Deno.serve(async (req) => {
   const cname = ((profile as any)?.caretaker_name as string) || "Caretaker";
   const cvoice = ((profile as any)?.caretaker_voice as string) || "calm";
   const clang = ((profile as any)?.caretaker_language as string) || "en";
+  const cpersona = ((profile as any)?.caretaker_persona as string) || "coach";
+  const { data: memRows } = await supabase.from("caretaker_memory").select("key,value").eq("user_id", user.id).limit(40);
+  const memoryBlock = (memRows && memRows.length)
+    ? memRows.map((m: any) => `- ${m.key}: ${m.value}`).join("\n")
+    : "(no saved preferences yet)";
 
   const { data: history } = await supabase.from("caretaker_messages")
     .select("role,content,tool_calls,tool_call_id,result")
