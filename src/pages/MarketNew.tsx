@@ -275,6 +275,64 @@ export default function MarketNew() {
         Pick a live dataset, plug in a URL, or upload your own. Set the elasticity band — traders price the distortion.
       </p>
 
+      <Card className="p-4 mb-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-sm font-medium">Market kind</div>
+            <div className="text-xs text-muted-foreground">
+              Time-series prices distortion vs a trend. Event resolves YES/NO from an oracle.
+            </div>
+          </div>
+          <div className="inline-flex rounded-md border border-border p-0.5">
+            <button
+              type="button"
+              onClick={() => setMarketKind("time_series")}
+              className={`px-3 py-1.5 text-sm rounded ${marketKind === "time_series" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >Time-series</button>
+            <button
+              type="button"
+              onClick={() => setMarketKind("event")}
+              className={`px-3 py-1.5 text-sm rounded ${marketKind === "event" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >Event (YES/NO)</button>
+          </div>
+        </div>
+      </Card>
+
+      {marketKind === "event" && (
+        <Card className="p-5 mb-6 space-y-4">
+          <h2 className="font-medium">Event oracle</h2>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Oracle source</Label>
+              <Select value={eventOracle} onValueChange={(v) => setEventOracle(v as EventOracle)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="kalshi">Kalshi (auto)</SelectItem>
+                  <SelectItem value="polymarket">Polymarket (auto)</SelectItem>
+                  <SelectItem value="manual">Manual + 24h dispute</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {eventOracle !== "manual" && (
+              <div className="space-y-2">
+                <Label>{eventOracle === "kalshi" ? "Kalshi ticker" : "Polymarket token id"}</Label>
+                <Input
+                  value={eventOracleRef}
+                  onChange={(e) => setEventOracleRef(e.target.value)}
+                  placeholder={eventOracle === "kalshi" ? "FEDDECISION-26JAN-C0.25" : "0x..."}
+                />
+              </div>
+            )}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {eventOracle === "manual"
+              ? "You'll post the final outcome; holders have 24h to dispute by locking a bond."
+              : "Resolution polls the provider automatically near your cutoff date and pays out YES/NO holders."}
+          </p>
+        </Card>
+      )}
+
+      {marketKind === "time_series" && (
       <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)} className="mb-6">
         <TabsList className="grid grid-cols-3 max-w-xl">
           <TabsTrigger value="template" className="gap-2"><Sparkles className="w-4 h-4" /> Template</TabsTrigger>
