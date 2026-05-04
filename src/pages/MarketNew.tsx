@@ -425,6 +425,7 @@ export default function MarketNew() {
           </Card>
         </TabsContent>
       </Tabs>
+      )}
 
       <div className="grid md:grid-cols-2 gap-6">
         <Card className="p-5 space-y-4">
