@@ -37,10 +37,16 @@ const schema = z.object({
 });
 
 type Mode = "template" | "csv" | "custom";
+type MarketKind = "time_series" | "event";
+type EventOracle = "kalshi" | "polymarket" | "manual";
 
 export default function MarketNew() {
   const { user } = useAuth();
   const nav = useNavigate();
+
+  const [marketKind, setMarketKind] = useState<MarketKind>("time_series");
+  const [eventOracle, setEventOracle] = useState<EventOracle>("kalshi");
+  const [eventOracleRef, setEventOracleRef] = useState("");
 
   const [mode, setMode] = useState<Mode>("template");
   const [template, setTemplate] = useState<Template | null>(null);
