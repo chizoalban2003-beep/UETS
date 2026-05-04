@@ -633,6 +633,130 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
       .limit(args.limit || 5);
     return { briefings: data || [] };
   }
+  if (name === "search_markets") {
+    let q = supabase.from("markets").select("id,name,category,unit,status,market_kind,resolution_at").limit(20);
+    if (args.status) q = q.eq("status", args.status); else q = q.in("status", ["open","pending_resolution","disputable"]);
+    if (args.category) q = q.eq("category", args.category);
+    if (args.query) q = q.ilike("name", `%${args.query}%`);
+    const { data } = await q;
+    return { markets: data || [] };
+  }
+  if (name === "analyze_market") {
+    const { data: m } = await supabase.from("markets").select("*").eq("id", args.market_id).maybeSingle();
+    if (!m) return { error: "market not found" };
+    const { data: pts } = await supabase.from("market_data_points").select("ts,value").eq("market_id", args.market_id).order("ts", { ascending: false }).limit(60);
+    const { data: cts } = await supabase.from("contracts").select("*").eq("market_id", args.market_id);
+    const { data: conc } = await supabase.rpc("detect_concentration_risk", { _market_id: args.market_id });
+    const series = (pts || []).map((p: any) => Number(p.value)).reverse();
+    const trend = series.length ? series.reduce((a,b)=>a+b,0)/series.length : null;
+    const last = series[series.length-1] ?? null;
+    const band = m.band_is_pct ? Math.abs(trend ?? 0) * (Number(m.band_width)/100) : Number(m.band_width);
+    const distortion = trend != null && last != null ? Math.max(0, (Math.abs(last-trend) - band)/(2*Math.max(band,1e-6))) : null;
+    return {
+      name: m.name, status: m.status, market_kind: m.market_kind, unit: m.unit,
+      latest: last, trend, band, distortion_estimate: distortion,
+      contracts: (cts||[]).map((c:any)=>({id:c.id, kind:c.kind, prob_yes: Number(c.reserve_no)/(Number(c.reserve_yes)+Number(c.reserve_no))})),
+      concentration_flags: conc || [],
+    };
+  }
+  if (name === "analyze_portfolio") {
+    const days = args.window_days || 30;
+    const since = new Date(Date.now() - days*86400000).toISOString();
+    const { data: trades } = await supabase.from("trades").select("*,contracts(market_id,markets(name,category))").eq("user_id", userId).gte("created_at", since);
+    const { data: positions } = await supabase.from("positions").select("*,contracts(market_id,reserve_yes,reserve_no,markets(name,category))").eq("user_id", userId);
+    const realized = (trades||[]).reduce((a:number,t:any)=>a+(t.side?.startsWith("sell")?Number(t.cost):-Number(t.cost)-Number(t.fee||0)),0);
+    const byCategory: Record<string, number> = {};
+    for (const p of positions || []) {
+      const cat = p.contracts?.markets?.category || "Other";
+      const exposure = (Number(p.yes_shares)+Number(p.no_shares));
+      byCategory[cat] = (byCategory[cat]||0) + exposure;
+    }
+    const totalExposure = Object.values(byCategory).reduce((a,b)=>a+b,0);
+    const concentrated = Object.entries(byCategory).filter(([,v])=>totalExposure>0 && v/totalExposure > 0.5).map(([k,v])=>({category:k, share_pct: Math.round(v/totalExposure*100)}));
+    return { window_days: days, realized_pnl: realized, trade_count: trades?.length || 0, exposure_by_category: byCategory, concentration_warnings: concentrated };
+  }
+  if (name === "simulate_trade") {
+    const { data: c } = await supabase.from("contracts").select("*").eq("id", args.contract_id).maybeSingle();
+    if (!c) return { error: "contract not found" };
+    const ry = Number(c.reserve_yes), rn = Number(c.reserve_no), k = ry*rn, s = Number(args.shares);
+    let newYes=ry, newNo=rn, gross=0;
+    try {
+      if (args.side === "buy_yes") { newYes = ry-s; if (newYes<=0) return {error:"insufficient liquidity"}; newNo = k/newYes; gross = newNo-rn; }
+      else if (args.side === "buy_no") { newNo = rn-s; if (newNo<=0) return {error:"insufficient liquidity"}; newYes = k/newNo; gross = newYes-ry; }
+      else if (args.side === "sell_yes") { newYes = ry+s; newNo = k/newYes; gross = rn-newNo; }
+      else if (args.side === "sell_no") { newNo = rn+s; newYes = k/newNo; gross = ry-newYes; }
+    } catch (e:any) { return { error: String(e?.message||e) }; }
+    const fee = Math.abs(gross) * (c.fee_bps||100)/10000;
+    const cost = args.side.startsWith("buy") ? gross+fee : gross-fee;
+    return {
+      avg_price: gross/s, total_cost: cost, fee, post_prob_yes: newNo/(newYes+newNo),
+      slippage_pct: ((Math.abs(gross/s) - rn/(ry+rn))/(rn/(ry+rn))*100),
+    };
+  }
+  if (name === "draft_market") {
+    const days = args.days_to_resolve || 14;
+    const resolution = new Date(Date.now() + days*86400000).toISOString();
+    return {
+      draft: {
+        name: args.idea.slice(0, 80),
+        rules_md: `Resolves on ${new Date(resolution).toUTCString()}.\n\nIdea: ${args.idea}\n\nProvide a clear yes/no resolution criterion before publishing. The market should be unambiguous and verifiable from a public source.`,
+        suggested_oracle: "manual",
+        market_kind: "event",
+        resolution_at: resolution,
+      },
+      next_step: "Open /markets/new and paste these fields, then refine before publishing.",
+    };
+  }
+  if (name === "schedule_alert") {
+    const { data, error } = await supabase.from("caretaker_alerts").insert({
+      user_id: userId, market_id: args.market_id, condition: args.condition, label: args.label || null,
+    }).select().single();
+    if (error) return { error: error.message };
+    return { ok: true, alert: data };
+  }
+  if (name === "list_alerts") {
+    const { data } = await supabase.from("caretaker_alerts").select("*").eq("user_id", userId).eq("active", true).order("created_at",{ascending:false});
+    return { alerts: data || [] };
+  }
+  if (name === "delete_alert") {
+    const { error } = await supabase.from("caretaker_alerts").update({ active: false }).eq("id", args.alert_id).eq("user_id", userId);
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
+  if (name === "list_notifications") {
+    let q = supabase.from("notifications").select("*").eq("user_id", userId).order("created_at",{ascending:false}).limit(args.limit || 10);
+    if (args.unread_only) q = q.is("read_at", null);
+    const { data } = await q;
+    return { notifications: data || [] };
+  }
+  if (name === "remember") {
+    const { error } = await supabase.from("caretaker_memory").upsert({ user_id: userId, key: args.key, value: args.value, updated_at: new Date().toISOString() });
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
+  if (name === "forget") {
+    const { error } = await supabase.from("caretaker_memory").delete().eq("user_id", userId).eq("key", args.key);
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
+  if (name === "pause_bot") {
+    const { error } = await supabase.from("bots").update({ mode: "off" }).eq("user_id", userId);
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
+  if (name === "resume_bot") {
+    const { error } = await supabase.from("bots").update({ mode: "suggest" }).eq("user_id", userId);
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
+  if (name === "request_payout") {
+    const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_PUBLISHABLE_KEY") || Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: `Bearer ${args._user_jwt}` } },
+    });
+    const { data, error } = await userClient.rpc("payout_creator", { _market_id: args.market_id });
+    if (error) return { error: error.message };
+    return { ok: true, market: data };
+  }
   return { error: `unknown tool ${name}` };
 }
 function pearson(a: number[], b: number[]): number | null {
