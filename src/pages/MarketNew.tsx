@@ -511,7 +511,7 @@ export default function MarketNew() {
         </Button>
         <div className="flex gap-3">
           <Button variant="outline" onClick={() => nav("/markets")}>Cancel</Button>
-          <Button onClick={submit} disabled={busy || (mode === "template" && !template) || (mode === "custom" && !testResult?.ok)}>
+          <Button onClick={submit} disabled={busy || (marketKind === "time_series" && ((mode === "template" && !template) || (mode === "custom" && !testResult?.ok))) || (marketKind === "event" && eventOracle !== "manual" && !eventOracleRef.trim())}>
             {busy ? "Saving…" : "Save draft → review & stake"}
           </Button>
         </div>
