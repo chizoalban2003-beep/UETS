@@ -13,12 +13,16 @@ import { getStripeEnvironment } from "@/lib/stripe";
 import { toast } from "sonner";
 
 type Tier = "free" | "pro_trader" | "creator_pro" | "creator_elite";
+type BillingInterval = "monthly" | "annual";
 
 const TIERS: Array<{
   tier: Tier;
   name: string;
-  price: string;
-  priceId?: string;
+  monthlyPrice: string;
+  annualPrice: string;
+  annualMonthlyRate: string;
+  monthlyPriceId?: string;
+  annualPriceId?: string;
   blurb: string;
   perks: string[];
   icon: any;
@@ -27,7 +31,9 @@ const TIERS: Array<{
   {
     tier: "free",
     name: "Free",
-    price: "$0",
+    monthlyPrice: "$0",
+    annualPrice: "$0",
+    annualMonthlyRate: "$0",
     blurb: "Get started, learn the ropes.",
     perks: ["25 caretaker actions / day", "1 active market", "Standard fees", "Paper-trading sandbox"],
     icon: Sparkles,
@@ -35,8 +41,11 @@ const TIERS: Array<{
   {
     tier: "pro_trader",
     name: "Pro Trader",
-    price: "$9 / mo",
-    priceId: "pro_trader_monthly",
+    monthlyPrice: "$9 / mo",
+    annualPrice: "$90 / yr",
+    annualMonthlyRate: "$7.50 / mo",
+    monthlyPriceId: "pro_trader_monthly",
+    annualPriceId: "pro_trader_annual",
     blurb: "For active traders who want their agent on duty.",
     perks: ["250 caretaker actions / day", "3 active markets", "Scout (auto trade ideas)", "Advanced backtests"],
     icon: Zap,
@@ -45,8 +54,11 @@ const TIERS: Array<{
   {
     tier: "creator_pro",
     name: "Creator Pro",
-    price: "$19 / mo",
-    priceId: "creator_pro_monthly",
+    monthlyPrice: "$19 / mo",
+    annualPrice: "$190 / yr",
+    annualMonthlyRate: "$15.83 / mo",
+    monthlyPriceId: "creator_pro_monthly",
+    annualPriceId: "creator_pro_annual",
     blurb: "For market creators running a marketplace.",
     perks: ["1000 caretaker actions / day", "5 active markets", "60% creator fee share (vs 50%)", "Steward + Advertiser agents"],
     icon: Crown,
@@ -54,8 +66,11 @@ const TIERS: Array<{
   {
     tier: "creator_elite",
     name: "Creator Elite",
-    price: "$39 / mo",
-    priceId: "creator_elite_monthly",
+    monthlyPrice: "$39 / mo",
+    annualPrice: "$390 / yr",
+    annualMonthlyRate: "$32.50 / mo",
+    monthlyPriceId: "creator_elite_monthly",
+    annualPriceId: "creator_elite_annual",
     blurb: "Power-creators with multi-market portfolios.",
     perks: ["5000 caretaker actions / day", "10 active markets", "70% creator fee share", "Premium oracles (Kalshi, Polymarket)"],
     icon: Crown,
@@ -71,6 +86,7 @@ export default function Billing() {
   const [sub, setSub] = useState<{ tier: Tier; status: string; current_period_end?: string | null } | null>(null);
   const [usage, setUsage] = useState<number>(0);
   const [checkoutPriceId, setCheckoutPriceId] = useState<string | null>(null);
+  const [interval, setInterval] = useState<BillingInterval>("monthly");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -193,10 +209,41 @@ export default function Billing() {
             </CardContent>
           </Card>
         ) : (
+          <>
+            {/* Monthly / Annual toggle */}
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <span className={`text-sm font-medium ${interval === "monthly" ? "text-foreground" : "text-muted-foreground"}`}>
+                Monthly
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={interval === "annual"}
+                onClick={() => setInterval(interval === "monthly" ? "annual" : "monthly")}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  interval === "annual" ? "bg-primary" : "bg-input"
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 rounded-full bg-background shadow-sm transition-transform ${
+                    interval === "annual" ? "translate-x-6" : "translate-x-1"
+                  }`}
+                />
+              </button>
+              <span className={`text-sm font-medium ${interval === "annual" ? "text-foreground" : "text-muted-foreground"}`}>
+                Annual
+              </span>
+              {interval === "annual" && (
+                <Badge variant="secondary" className="text-xs">2 months free</Badge>
+              )}
+            </div>
+
           <div className="grid md:grid-cols-3 gap-4">
             {TIERS.map((t) => {
               const Icon = t.icon;
               const isCurrent = currentTier === t.tier;
+              const displayPrice = interval === "annual" ? t.annualMonthlyRate : t.monthlyPrice;
+              const activePriceId = interval === "annual" ? t.annualPriceId : t.monthlyPriceId;
               return (
                 <Card key={t.tier} className={t.highlight ? "border-primary shadow-glow" : ""}>
                   <CardHeader>
@@ -208,7 +255,10 @@ export default function Billing() {
                       {t.highlight && <Badge>Most popular</Badge>}
                     </div>
                     <div className="mt-2">
-                      <span className="text-3xl font-bold">{t.price}</span>
+                      <span className="text-3xl font-bold">{displayPrice}</span>
+                      {interval === "annual" && t.annualPriceId && (
+                        <span className="ml-2 text-xs text-muted-foreground">billed as {t.annualPrice}</span>
+                      )}
                     </div>
                     <CardDescription>{t.blurb}</CardDescription>
                   </CardHeader>
@@ -223,8 +273,8 @@ export default function Billing() {
                     </ul>
                     {isCurrent ? (
                       <Button disabled className="w-full" variant="secondary">Current plan</Button>
-                    ) : t.priceId ? (
-                      <Button className="w-full" onClick={() => setCheckoutPriceId(t.priceId!)}>
+                    ) : activePriceId ? (
+                      <Button className="w-full" onClick={() => setCheckoutPriceId(activePriceId)}>
                         Upgrade to {t.name}
                       </Button>
                     ) : (
@@ -235,6 +285,7 @@ export default function Billing() {
               );
             })}
           </div>
+          </>
         )}
 
         <p className="text-xs text-muted-foreground mt-8 text-center">
