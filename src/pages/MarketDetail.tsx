@@ -383,6 +383,7 @@ function ContractPanel({
   const { user } = useAuth();
   const [side, setSide] = useState<"yes" | "no">("yes");
   const [shares, setShares] = useState(10);
+  const [sellShares, setSellShares] = useState(10);
   const [busy, setBusy] = useState(false);
 
   const ry = Number(contract.reserve_yes);
@@ -438,14 +439,28 @@ function ContractPanel({
         <div className="mt-4 pt-4 border-t border-border/60 text-xs space-y-1">
           <div className="flex justify-between"><span className="text-muted-foreground">YES held</span><span className="font-mono-num">{Number(position.yes_shares).toFixed(2)}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">NO held</span><span className="font-mono-num">{Number(position.no_shares).toFixed(2)}</span></div>
+          <div className="mt-2 space-y-2">
+            <Label className="text-xs">Shares to sell</Label>
+            <Input
+              type="number"
+              min={1}
+              step={1}
+              value={sellShares}
+              onChange={(e) => setSellShares(Math.max(1, Number(e.target.value) || 1))}
+            />
+          </div>
           <div className="flex gap-2 mt-2">
             {Number(position.yes_shares) > 0 && (
               <Button size="sm" variant="outline" className="flex-1" disabled={busy || disabled}
-                onClick={() => trade("sell_yes")}>Sell YES</Button>
+                onClick={() => { const prev = shares; setShares(sellShares); trade("sell_yes"); setShares(prev); }}>
+                Sell {sellShares} YES
+              </Button>
             )}
             {Number(position.no_shares) > 0 && (
               <Button size="sm" variant="outline" className="flex-1" disabled={busy || disabled}
-                onClick={() => trade("sell_no")}>Sell NO</Button>
+                onClick={() => { const prev = shares; setShares(sellShares); trade("sell_no"); setShares(prev); }}>
+                Sell {sellShares} NO
+              </Button>
             )}
           </div>
         </div>

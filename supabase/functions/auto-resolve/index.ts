@@ -3,8 +3,11 @@
 //   open -> pending_resolution (when resolution_at passed)
 //   pending_resolution -> disputable (records final_value from latest data point, sets final_posted_at)
 //   disputable -> resolved (after 24h dispute window with no open disputes; settles payouts via RPC)
-import { createClient } from "npm:@supabase/supabase-js@2.95.0";
-import { corsHeaders } from "npm:@supabase/supabase-js@2.95.0/cors";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

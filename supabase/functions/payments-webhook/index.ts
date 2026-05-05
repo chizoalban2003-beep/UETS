@@ -1,5 +1,5 @@
 // Stripe webhook handler. Maps subscription events to subscriptions.tier.
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { type StripeEnv, verifyWebhook } from "../_shared/stripe.ts";
 
 let _supabase: ReturnType<typeof createClient> | null = null;
@@ -64,6 +64,11 @@ async function upsertFromSubscription(sub: any) {
       },
       { onConflict: "user_id" },
     );
+
+  await getSupabase().rpc("set_tier_agent_limits", {
+    _user_id: userId,
+    _tier: tier,
+  });
 }
 
 async function handleWebhook(req: Request, env: StripeEnv) {
@@ -82,6 +87,7 @@ async function handleWebhook(req: Request, env: StripeEnv) {
           .from("subscriptions")
           .update({ tier: "free", status: "canceled", updated_at: new Date().toISOString() })
           .eq("user_id", userId);
+        await getSupabase().rpc("set_tier_agent_limits", { _user_id: userId, _tier: "free" });
       }
       break;
     }

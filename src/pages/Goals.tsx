@@ -66,16 +66,25 @@ export default function Goals() {
   const load = async () => {
     if (!user) return;
     setLoading(true);
-    const [{ data: g }, { data: w }] = await Promise.all([
+    const [{ data: g }, { data: w }, { data: firstEntry }] = await Promise.all([
       supabase
         .from("user_goals")
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false }),
       supabase.from("wallets").select("balance").eq("user_id", user.id).maybeSingle(),
+      supabase
+        .from("ledger_entries")
+        .select("amount")
+        .eq("user_id", user.id)
+        .eq("reason", "signup_bonus")
+        .maybeSingle(),
     ]);
     setGoals((g as Goal[]) || []);
-    setCurrentValue(Number((w as any)?.balance || 0));
+    const bal = Number((w as any)?.balance || 0);
+    setCurrentValue(bal);
+    // Use signup bonus amount as starting balance (fallback to 10000)
+    setStartBalance(Number((firstEntry as any)?.amount || 10000));
     setLoading(false);
   };
 

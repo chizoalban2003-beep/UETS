@@ -3,49 +3,17 @@
 // for an action, then either records a suggestion, or (in approve/auto mode) records
 // a suggestion that the client can one-click execute. Auto mode also executes immediately.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { fitTrend, distortionScore, ammPriceYes, type DataPoint } from "../_shared/trend.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
-
-type DataPoint = { ts: number; value: number };
-
-function fitLinear(points: DataPoint[]) {
-  const sorted = [...points].sort((a, b) => a.ts - b.ts);
-  const n = sorted.length;
-  if (n === 0) return (_: number) => 0;
-  const x0 = sorted[0].ts;
-  const xs = sorted.map((p) => (p.ts - x0) / 86400000);
-  const ys = sorted.map((p) => p.value);
-  const sx = xs.reduce((a, b) => a + b, 0);
-  const sy = ys.reduce((a, b) => a + b, 0);
-  const sxy = xs.reduce((a, _, i) => a + xs[i] * ys[i], 0);
-  const sxx = xs.reduce((a, b) => a + b * b, 0);
-  const denom = n * sxx - sx * sx;
-  const slope = denom === 0 ? 0 : (n * sxy - sx * sy) / denom;
-  const intercept = (sy - slope * sx) / n;
-  return (ts: number) => intercept + slope * ((ts - x0) / 86400000);
-}
-
-function distortionScore(actual: number, trend: number, bandWidth: number, bandIsPct: boolean) {
-  const halfBand = bandIsPct ? Math.abs(trend) * (bandWidth / 100) : bandWidth;
-  if (halfBand <= 0) return 0;
-  const dev = Math.abs(actual - trend);
-  if (dev <= halfBand) return 0;
-  return Math.min(1, (dev - halfBand) / (2 * halfBand));
-}
-
-function ammPriceYes(rY: number, rN: number) {
-  const t = rY + rN;
-  return t === 0 ? 0.5 : rN / t;
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
