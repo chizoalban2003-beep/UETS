@@ -8,21 +8,26 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
-import { Sparkles, Send, CheckCircle2, XCircle, Loader2, RefreshCw } from "lucide-react";
+import { Sparkles, Send, CheckCircle2, XCircle, Loader2, RefreshCw, ClipboardList, PlayCircle, Clock } from "lucide-react";
 import { streamCaretaker } from "@/lib/caretakerStream";
 import CaretakerModeSlider, { type CaretakerMode } from "@/components/CaretakerModeSlider";
 import EventBriefingCard, { type CaretakerEvent } from "@/components/EventBriefingCard";
 import CaretakerPersonality from "@/components/CaretakerPersonality";
+import TradePlanCard, { type TradePlan } from "@/components/TradePlanCard";
 
 type Msg = { id: string; role: string; content: string | null; tool_calls?: any; result?: any; pending_approval?: boolean; approved?: boolean | null; tool_call_id?: string | null; streaming?: boolean };
 type Pending = { id: string; name: string; args: any; guardrail_warning?: string };
 type ToolStatus = { id: string; name: string; status: "running" | "done" };
+type AgentPlan = { id: string; title: string; objective?: string; status: string; mode: string; current_step: number; created_at: string };
 
 export default function Caretaker() {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Msg[]>([]);
   const [pending, setPending] = useState<Pending[]>([]);
   const [toolStatuses, setToolStatuses] = useState<ToolStatus[]>([]);
+  const [inlinePlans, setInlinePlans] = useState<Record<string, TradePlan>>({});
+  const [agentPlans, setAgentPlans] = useState<AgentPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<CaretakerMode>("suggest");
@@ -50,9 +55,30 @@ export default function Caretaker() {
       supabase.from("caretaker_messages").select("*").eq("user_id", user.id).order("created_at", { ascending: true }).limit(60),
       supabase.from("caretaker_events").select("*").eq("user_id", user.id).order("created_at", { ascending: false }).limit(30),
     ]);
+    // Extract inline trade plans from create_trade_plan tool results
+    const plans: Record<string, TradePlan> = {};
+    for (const m of (msgs as any[]) || []) {
+      if (m.role === "tool" && m.result?.ok && m.result?.plan) {
+        plans[m.tool_call_id || m.id] = m.result.plan as TradePlan;
+      }
+    }
+    setInlinePlans(plans);
     setMessages((msgs as any) || []);
     setEvents((evts as any) || []);
     scrollDown();
+  };
+
+  const loadAgentPlans = async () => {
+    if (!user) return;
+    setPlansLoading(true);
+    const { data } = await supabase
+      .from("agent_plans")
+      .select("id,title,objective,status,mode,current_step,created_at")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    setAgentPlans((data as AgentPlan[]) || []);
+    setPlansLoading(false);
   };
 
   useEffect(() => { loadProfile(); load(); }, [user]);
@@ -151,6 +177,43 @@ export default function Caretaker() {
     await load();
   };
 
+  const savePlanFromChat = async (plan: TradePlan, mode: "suggest" | "autopilot") => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/caretaker-execute`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({
+        tool_name: "save_agent_plan",
+        args: { ...plan, mode },
+        approved: true,
+      }),
+    });
+    const j = await r.json();
+    if (!r.ok) { toast.error(j.error || "Failed to save plan"); return; }
+    toast.success("Plan saved! View it in Agent Plans.");
+    await loadAgentPlans();
+  };
+
+  const runPlan = async (planId: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/caretaker-execute`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+      },
+      body: JSON.stringify({ tool_name: "run_agent_plan", args: { plan_id: planId }, approved: true }),
+    });
+    const j = await r.json();
+    if (!r.ok) toast.error(j.error || "Failed to run plan");
+    else { toast.success("Plan started!"); await loadAgentPlans(); }
+  };
+
   return (
     <div className="container py-8 max-w-4xl">
       <div className="flex items-start gap-3 mb-6 flex-wrap">
@@ -174,12 +237,16 @@ export default function Caretaker() {
         </div>
       </div>
 
-      <Tabs defaultValue="chat">
+      <Tabs defaultValue="chat" onValueChange={(v) => { if (v === "plans") loadAgentPlans(); }}>
         <TabsList>
           <TabsTrigger value="chat">Chat</TabsTrigger>
           <TabsTrigger value="journal">
             Journal
             {events.some((e) => !e.read_at) && <Badge variant="default" className="ml-2 h-5 px-1.5">{events.filter((e) => !e.read_at).length}</Badge>}
+          </TabsTrigger>
+          <TabsTrigger value="plans">
+            Agent Plans
+            {agentPlans.some((p) => p.status === "running") && <Badge variant="default" className="ml-2 h-5 px-1.5">{agentPlans.filter((p) => p.status === "running").length}</Badge>}
           </TabsTrigger>
           <TabsTrigger value="personality">Personality</TabsTrigger>
         </TabsList>
@@ -193,7 +260,7 @@ export default function Caretaker() {
                 </div>
               )}
               {messages.filter((m) => m.role !== "tool" && (m.content || m.tool_calls)).map((m) => (
-                <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
                   <div className={`max-w-[85%] rounded-lg px-4 py-2.5 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-secondary"}`}>
                     {m.content && (
                       <div className="prose prose-sm prose-invert max-w-none">
@@ -208,6 +275,22 @@ export default function Caretaker() {
                       </div>
                     )}
                   </div>
+                  {/* Inline TradePlanCard for create_trade_plan tool results */}
+                  {m.tool_calls && Array.isArray(m.tool_calls) && m.tool_calls.some((tc: any) => tc.function?.name === "create_trade_plan") &&
+                    m.tool_calls.map((tc: any) => {
+                      if (tc.function?.name !== "create_trade_plan") return null;
+                      const inlinePlan = inlinePlans[tc.id];
+                      if (!inlinePlan) return null;
+                      return (
+                        <div key={tc.id} className="max-w-[85%] mt-2">
+                          <TradePlanCard
+                            plan={inlinePlan}
+                            onSave={(mode) => savePlanFromChat(inlinePlan, mode)}
+                          />
+                        </div>
+                      );
+                    })
+                  }
                 </div>
               ))}
               {pending.map((p) => (
@@ -258,6 +341,50 @@ export default function Caretaker() {
             </Card>
           ) : (
             events.map((e) => <EventBriefingCard key={e.id} event={e} />)
+          )}
+        </TabsContent>
+
+        <TabsContent value="plans" className="mt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">Saved agent plans. Ask the Caretaker to create a plan, then save it here.</p>
+            <Button size="sm" variant="outline" onClick={loadAgentPlans} disabled={plansLoading}>
+              {plansLoading ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5 mr-1" />}
+              Refresh
+            </Button>
+          </div>
+          {agentPlans.length === 0 ? (
+            <Card className="p-10 text-center bg-gradient-surface">
+              <ClipboardList className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">No saved plans yet. Ask the Caretaker: <em>"Create a plan to grow my portfolio 20% this month."</em></p>
+            </Card>
+          ) : (
+            agentPlans.map((plan) => (
+              <Card key={plan.id} className="p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-sm">{plan.title}</p>
+                    {plan.objective && <p className="text-xs text-muted-foreground mt-0.5">{plan.objective}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Badge variant={plan.status === "running" ? "default" : plan.status === "completed" ? "outline" : "secondary"} className="text-[10px]">
+                      {plan.status}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      {plan.mode}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Clock className="w-3 h-3" />
+                  {new Date(plan.created_at).toLocaleDateString()}
+                  {plan.status !== "running" && plan.status !== "completed" && (
+                    <Button size="sm" variant="outline" className="ml-auto h-7 text-xs" onClick={() => runPlan(plan.id)}>
+                      <PlayCircle className="w-3.5 h-3.5 mr-1" /> Run
+                    </Button>
+                  )}
+                </div>
+              </Card>
+            ))
           )}
         </TabsContent>
 

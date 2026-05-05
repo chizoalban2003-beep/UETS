@@ -64,6 +64,11 @@ async function upsertFromSubscription(sub: any) {
       },
       { onConflict: "user_id" },
     );
+
+  await getSupabase().rpc("set_tier_agent_limits", {
+    _user_id: userId,
+    _tier: tier,
+  });
 }
 
 async function handleWebhook(req: Request, env: StripeEnv) {
@@ -82,6 +87,7 @@ async function handleWebhook(req: Request, env: StripeEnv) {
           .from("subscriptions")
           .update({ tier: "free", status: "canceled", updated_at: new Date().toISOString() })
           .eq("user_id", userId);
+        await getSupabase().rpc("set_tier_agent_limits", { _user_id: userId, _tier: "free" });
       }
       break;
     }

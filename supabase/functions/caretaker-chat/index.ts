@@ -2,6 +2,7 @@
 // Uses Lovable AI Gateway with tool calling. Read-only tools run inline.
 // Mutating tools either auto-execute (autopilot mode) or return as pending approvals.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { fitTrend, distortionScore } from "../_shared/trend.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -16,12 +17,18 @@ const READ_ONLY_TOOLS = new Set([
   "run_backtest", "suggest_hedges", "explain_concept", "list_briefings",
   "search_markets", "analyze_market", "analyze_portfolio", "simulate_trade",
   "draft_market", "list_alerts", "list_notifications",
+  // new agent/file tools (read-only)
+  "analyze_file", "list_files", "get_market_opportunity_scan",
+  "explain_position_risk", "list_agent_plans",
 ]);
 const MUTATING_TOOLS = new Set([
   "place_trade", "create_market_from_template", "update_bot_config", "set_goal",
   "generate_report", "reset_paper_balance",
   "schedule_alert", "delete_alert", "remember", "forget",
   "pause_bot", "resume_bot", "request_payout",
+  // new agent/file mutating tools
+  "create_trade_plan", "save_agent_plan", "run_agent_plan",
+  "create_market_from_file", "schedule_agent_plan",
 ]);
 
 const TOOLS = [
@@ -375,6 +382,146 @@ const TOOLS = [
         type: "object",
         properties: { market_id: { type: "string" } },
         required: ["market_id"], additionalProperties: false,
+      },
+    },
+  },
+  // ── 10 new agent / file tools ────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "analyze_file",
+      description: "Analyse a previously ingested file by its file_id. Returns extracted text preview and AI summary.",
+      parameters: {
+        type: "object",
+        properties: { file_id: { type: "string" } },
+        required: ["file_id"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_files",
+      description: "List files the user has ingested this session.",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number", description: "default 10" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_trade_plan",
+      description: "Design a structured multi-step trading strategy plan. Returns a plan object the user can review and save.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          objective: { type: "string" },
+          steps: { type: "array", items: { type: "object", properties: { tool: { type: "string" }, description: { type: "string" }, args: { type: "object" } }, required: ["tool", "description"] } },
+          risk_notes: { type: "string" },
+          expected_outcome: { type: "string" },
+        },
+        required: ["title", "objective", "steps"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_agent_plan",
+      description: "Persist a trade plan to the database. The user can then run or schedule it.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          objective: { type: "string" },
+          steps: { type: "array", items: { type: "object" } },
+          risk_notes: { type: "string" },
+          expected_outcome: { type: "string" },
+          mode: { type: "string", enum: ["suggest", "autopilot"], description: "default suggest" },
+        },
+        required: ["title", "steps"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "run_agent_plan",
+      description: "Execute a saved agent plan by plan_id.",
+      parameters: {
+        type: "object",
+        properties: { plan_id: { type: "string" } },
+        required: ["plan_id"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_agent_plans",
+      description: "List the user's saved agent plans.",
+      parameters: {
+        type: "object",
+        properties: { status: { type: "string", enum: ["draft", "running", "paused", "completed", "failed"] } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_market_opportunity_scan",
+      description: "Scan all live oracle-backed markets and rank by distortion score. Returns top opportunities for mean-reversion and momentum strategies.",
+      parameters: {
+        type: "object",
+        properties: {
+          strategy: { type: "string", enum: ["mean_reversion", "momentum", "mixed"], description: "default mixed" },
+          limit: { type: "number", description: "default 5" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "explain_position_risk",
+      description: "Explain the risk profile of the user's current open positions: max loss, correlation, over-concentration.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_market_from_file",
+      description: "Create a new market draft from a previously ingested file (CSV or JSON data).",
+      parameters: {
+        type: "object",
+        properties: {
+          file_id: { type: "string" },
+          rationale: { type: "string" },
+          resolution_days: { type: "number", description: "default 14" },
+        },
+        required: ["file_id", "rationale"], additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "schedule_agent_plan",
+      description: "Schedule an existing agent plan to run on a cron expression.",
+      parameters: {
+        type: "object",
+        properties: {
+          plan_id: { type: "string" },
+          cron_expr: { type: "string", description: "e.g. '0 9 * * 1-5' for weekdays at 9am UTC" },
+        },
+        required: ["plan_id", "cron_expr"], additionalProperties: false,
       },
     },
   },
@@ -760,6 +907,212 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
     if (error) return { error: error.message };
     return { ok: true, market: data };
   }
+  // ── New agent / file tools ──────────────────────────────────────────────
+  if (name === "analyze_file") {
+    const { data, error } = await supabase
+      .from("ingested_files")
+      .select("id,filename,mime_type,page_count,row_count,extracted_text,ai_summary,created_at")
+      .eq("id", args.file_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !data) return { error: "file not found" };
+    return {
+      file_id: (data as any).id,
+      filename: (data as any).filename,
+      page_count: (data as any).page_count,
+      row_count: (data as any).row_count,
+      ai_summary: (data as any).ai_summary,
+      extracted_text_preview: ((data as any).extracted_text || "").slice(0, 1000),
+    };
+  }
+  if (name === "list_files") {
+    const { data } = await supabase
+      .from("ingested_files")
+      .select("id,filename,mime_type,page_count,row_count,ai_summary,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(args.limit || 10);
+    return { files: data || [] };
+  }
+  if (name === "create_trade_plan") {
+    // Just return the plan structure — the user must approve + save separately.
+    return {
+      ok: true,
+      plan: {
+        title: args.title,
+        objective: args.objective,
+        steps: args.steps,
+        risk_notes: args.risk_notes || null,
+        expected_outcome: args.expected_outcome || null,
+      },
+    };
+  }
+  if (name === "save_agent_plan") {
+    const { data, error } = await supabase
+      .from("agent_plans")
+      .insert({
+        user_id: userId,
+        title: args.title,
+        objective: args.objective || null,
+        steps: args.steps,
+        risk_notes: args.risk_notes || null,
+        expected_outcome: args.expected_outcome || null,
+        mode: args.mode || "suggest",
+      })
+      .select()
+      .single();
+    if (error) return { error: error.message };
+    return { ok: true, plan_id: (data as any).id, plan: data };
+  }
+  if (name === "run_agent_plan") {
+    const runResp = await fetch(`${SUPABASE_URL}/functions/v1/agent-run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      body: JSON.stringify({ plan_id: args.plan_id, user_id: userId }),
+    });
+    const j = await runResp.json().catch(() => ({}));
+    if (!runResp.ok) return { error: (j as any)?.error || "agent-run failed" };
+    return { ok: true, result: j };
+  }
+  if (name === "list_agent_plans") {
+    let q = supabase.from("agent_plans").select("id,title,objective,status,mode,current_step,created_at").eq("user_id", userId).order("created_at", { ascending: false });
+    if (args.status) q = q.eq("status", args.status);
+    const { data } = await q;
+    return { plans: data || [] };
+  }
+  if (name === "get_market_opportunity_scan") {
+    const strategy = args.strategy || "mixed";
+    const limit = args.limit || 5;
+
+    const { data: markets } = await supabase
+      .from("markets")
+      .select("id,name,category,band_width,band_is_pct,unit,trend_model")
+      .eq("status", "open")
+      .not("data_source_id", "is", null)
+      .limit(30);
+
+    if (!markets || markets.length === 0) return { opportunities: [] };
+
+    const scored: any[] = [];
+    for (const m of markets) {
+      const { data: pts } = await supabase
+        .from("market_data_points")
+        .select("ts,value")
+        .eq("market_id", m.id)
+        .order("ts", { ascending: false })
+        .limit(30);
+      if (!pts || pts.length < 5) continue;
+
+      const points = pts.map((p: any) => ({ ts: new Date(p.ts).getTime(), value: Number(p.value) })).reverse();
+      const trendFn = fitTrend(points, m.trend_model || "linear");
+      const now = Date.now();
+      const trendNow = trendFn(now);
+      const lastVal = points[points.length - 1].value;
+      const score = distortionScore(lastVal, trendNow, Number(m.band_width), m.band_is_pct);
+      const halfBand = m.band_is_pct ? Math.abs(trendNow) * (Number(m.band_width) / 100) : Number(m.band_width);
+      const direction: string = lastVal > trendNow + halfBand ? "outside_high"
+        : lastVal < trendNow - halfBand ? "outside_low"
+        : "inside";
+
+      // Get YES contract for price
+      const { data: cts } = await supabase.from("contracts").select("id,kind,reserve_yes,reserve_no").eq("market_id", m.id);
+      const snapback = (cts || []).find((c: any) => c.kind === "snapback");
+      const priceYes = snapback
+        ? Number(snapback.reserve_no) / (Number(snapback.reserve_yes) + Number(snapback.reserve_no))
+        : null;
+
+      // Momentum: prev half of points vs latter half slope
+      const half = Math.floor(points.length / 2);
+      const prevAvg = points.slice(0, half).reduce((a: number, p: any) => a + p.value, 0) / half;
+      const recentAvg = points.slice(half).reduce((a: number, p: any) => a + p.value, 0) / (points.length - half);
+      const accelerating = (direction === "outside_high" && recentAvg > prevAvg)
+        || (direction === "outside_low" && recentAvg < prevAvg);
+
+      const recommended_side = direction === "outside_high"
+        ? "buy_no"  // price will snap back → buy NO on distortion (snap back inside)
+        : direction === "outside_low"
+          ? "buy_no"
+          : "buy_yes";
+
+      scored.push({
+        market_id: m.id,
+        name: m.name,
+        category: m.category,
+        distortion_score: Math.round(score * 1000) / 1000,
+        direction,
+        price_yes: priceYes != null ? Math.round(priceYes * 1000) / 1000 : null,
+        recommended_side,
+        accelerating,
+        reasoning: direction === "inside"
+          ? `Price inside band (distortion 0). Low opportunity.`
+          : `Price is ${direction.replace("_", " ")} band by distortion ${(score * 100).toFixed(1)}%. ${accelerating ? "Momentum is accelerating — momentum trade." : "Momentum decaying — mean-reversion candidate."}`,
+      });
+    }
+
+    // Sort by strategy
+    let filtered = scored.filter((s) => s.distortion_score > 0);
+    if (strategy === "mean_reversion") filtered = filtered.filter((s) => !s.accelerating);
+    else if (strategy === "momentum") filtered = filtered.filter((s) => s.accelerating);
+    filtered.sort((a, b) => b.distortion_score - a.distortion_score);
+
+    return { opportunities: filtered.slice(0, limit), total_scanned: markets.length };
+  }
+  if (name === "explain_position_risk") {
+    const ctx = await getUserContext(supabase, userId);
+    const open = ctx.positions.filter((p: any) => Number(p.yes_shares) > 0 || Number(p.no_shares) > 0);
+    if (!open.length) return { note: "No open positions." };
+    const totalShares = open.reduce((a: number, p: any) => a + Number(p.yes_shares) + Number(p.no_shares), 0);
+    const maxLoss = open.reduce((a: number, p: any) => a + Number(p.cost_basis_yes || 0) + Number(p.cost_basis_no || 0), 0);
+    const byMarket = open.map((p: any) => ({
+      market: p.contracts?.markets?.name,
+      kind: p.contracts?.kind,
+      net_shares: Number(p.yes_shares) - Number(p.no_shares),
+      share_pct: totalShares > 0 ? Math.round(((Number(p.yes_shares) + Number(p.no_shares)) / totalShares) * 100) : 0,
+    }));
+    const concentrated = byMarket.filter((m) => m.share_pct > 40);
+    return {
+      open_positions: open.length,
+      total_exposure_shares: totalShares,
+      max_loss_if_all_wrong: maxLoss,
+      positions: byMarket,
+      concentration_warnings: concentrated.map((m) => `${m.market} is ${m.share_pct}% of total exposure`),
+    };
+  }
+  if (name === "create_market_from_file") {
+    const { data: file } = await supabase.from("ingested_files").select("*").eq("id", args.file_id).eq("user_id", userId).maybeSingle();
+    if (!file) return { error: "file not found" };
+    const days = args.resolution_days || 14;
+    const { data: m, error: mErr } = await supabase.from("markets").insert({
+      creator_id: userId,
+      name: ((file as any).filename || "Uploaded data").replace(/\.[^.]+$/, "").slice(0, 80),
+      description: `${args.rationale}\n\nData source: ${(file as any).filename}\n\n${((file as any).ai_summary || "").slice(0, 500)}`,
+      category: "Custom",
+      unit: "value",
+      trend_model: "linear",
+      band_width: 5,
+      band_is_pct: true,
+      resolution_at: new Date(Date.now() + days * 86400000).toISOString(),
+      market_kind: "event",
+    }).select().single();
+    if (mErr) return { error: mErr.message };
+    return { ok: true, market_id: (m as any).id, name: (m as any).name, next_step: "Review and publish at /markets/new" };
+  }
+  if (name === "schedule_agent_plan") {
+    // Check that plan belongs to user
+    const { data: plan } = await supabase.from("agent_plans").select("id").eq("id", args.plan_id).eq("user_id", userId).maybeSingle();
+    if (!plan) return { error: "plan not found" };
+    // Check subscription allows scheduled agents
+    const { data: sub } = await supabase.from("subscriptions").select("scheduled_agents").eq("user_id", userId).maybeSingle();
+    if (!(sub as any)?.scheduled_agents) return { error: "Scheduled agent plans require Creator Pro or above. Upgrade in Billing." };
+    const { data, error } = await supabase.from("agent_schedules").insert({
+      user_id: userId,
+      plan_id: args.plan_id,
+      cron_expr: args.cron_expr,
+      next_run_at: new Date(Date.now() + 60_000).toISOString(), // first run in 1 min
+    }).select().single();
+    if (error) return { error: error.message };
+    return { ok: true, schedule_id: (data as any).id, cron_expr: args.cron_expr };
+  }
   return { error: `unknown tool ${name}` };
 }
 function pearson(a: number[], b: number[]): number | null {
@@ -859,34 +1212,66 @@ Deno.serve(async (req) => {
   const LANG_NAME: Record<string, string> = { en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese" };
   const langLabel = LANG_NAME[clang] || "English";
 
-  const systemPrompt = `You are ${cname} — the always-on co-pilot for Driftworks, a markets platform where users "trade the drift from trend". Your role-name is "Caretaker"; your given name is "${cname}". Refer to yourself as ${cname} when introducing yourself.
+  const systemContent = `You are ${cname} — a personal AI financial assistant built into the Driftworks prediction market platform.
 
-You operate across three lifecycle moments for every event: PRE (briefing + plan), DURING (live updates as price/data moves), and POST (recap + lesson). Use \`list_briefings\` if the user asks "what happened" or "what's next".
+YOUR IDENTITY:
+You are proactive, decisive, and specific. You don't give vague advice — you give concrete plans, specific trades, and honest risk assessments. You speak to the user like a trusted advisor who has read their entire trading history and knows their goals.
 
-Skill level: ${skill}. ${SKILL_GUIDE[skill] || SKILL_GUIDE.beginner}
+YOUR CAPABILITIES:
+- Portfolio analysis: you can see all open positions, P&L, and balance in real time
+- Market intelligence: you can scan, analyse, and explain any open market
+- Trade execution: in co-pilot mode you place trades with one-tap approval; in autopilot you execute within risk caps autonomously
+- Agent plans: you can design and execute multi-step trading strategies over days
+- File analysis: you can read and reason over CSV data, PDFs, and images the user shares
+- Market creation: you can spin up new markets from templates or from the user's own data
+- Goal management: you set, track, and auto-update trading goals
+- Scheduled operations: you can schedule yourself to run daily scans or recurring plans
 
-Caretaker mode: ${cmode}. ${MODE_GUIDE[cmode] || MODE_GUIDE.suggest}
+YOUR OPERATING MODES:
+- Teach: explain concepts, never execute trades
+- Suggest: propose everything, wait for approval on all actions
+- Co-pilot: execute reads immediately, queue writes for one-tap approval
+- Autopilot: execute everything within the user's risk caps without asking
 
+USER CONTEXT:
+Skill level: ${skill}
+Mode: ${cmode}
+Balance: §${Number(ctx.wallet?.balance || 0).toFixed(2)}
+Open positions: ${ctx.positions?.length || 0}
+Active goals: ${ctx.goals?.filter((g: any) => g.status === "active").length || 0}
+${(memRows && memRows.length) ? "Memory: " + memRows.slice(0, 5).map((m: any) => m.key + ": " + m.value).join("; ") : ""}
+
+PERSONALITY (${cvoice} voice):
 ${VOICE_GUIDE[cvoice] || VOICE_GUIDE.calm}
 
-Reply language: ${langLabel}. Always reply in ${langLabel} regardless of the language the user writes in, unless the user explicitly asks you to switch.
+SKILL ADAPTATION:
+${SKILL_GUIDE[skill] || SKILL_GUIDE.beginner}
 
-Current user state:
-- Cash balance: $${Number(ctx.wallet?.balance || 0).toFixed(2)} (paper trading)
-- Open positions: ${ctx.positions.length}
-- Trading bot strategy: ${ctx.bot?.strategy || "n/a"}; risk caps: max position ${ctx.bot?.max_position_size}, max daily loss ${ctx.bot?.max_daily_loss}
-- Active goals: ${ctx.goals.length ? ctx.goals.map((g: any) => g.title).join(", ") : "none"}
+MODE GUIDE:
+${MODE_GUIDE[cmode] || MODE_GUIDE.suggest}
+
+PERSONA: ${cpersona}. ${({ coach: "You are a patient teacher; explain before acting; ask one short question at the end.", analyst: "You are a data-driven analyst; lead with numbers, charts, distributions; cite tool outputs.", trader: "You are a fast-talking trader; terse, direct, propose specific trades with sizes; minimize fluff.", creator: "You are a market-design partner; focus on rules clarity, oracle choice, fee strategy, fairness." } as Record<string, string>)[cpersona] || ""}
+
+Reply language: ${LANG_NAME[clang] || "English"}. Always reply in this language unless the user explicitly asks to switch.
 
 How markets work: each market tracks a real-world series with a "trend" (linear/EWMA/Bollinger/seasonal/log_linear) and an elasticity band. Two contracts per market: DISTORTION (pays out proportional to how far the value ends up outside the band) and SNAPBACK (binary: does it finish inside the band?). Constant-product AMM with a small fee.
 
-Persona: ${cpersona}. ${({coach:"You are a patient teacher; explain before acting; ask one short question at the end.", analyst:"You are a data-driven analyst; lead with numbers, charts, distributions; cite tool outputs.", trader:"You are a fast-talking trader; terse, direct, propose specific trades with sizes; minimize fluff.", creator:"You are a market-design partner; focus on rules clarity, oracle choice, fee strategy, fairness."} as Record<string,string>)[cpersona] || ""}
-
-Saved user preferences (use them when relevant):
+Saved user preferences:
 ${memoryBlock}
 
-You have many tools. ALWAYS prefer calling read-only tools (search_markets, analyze_market, analyze_portfolio, simulate_trade) BEFORE proposing actions. Chain tools when useful. Use \`remember\` when the user states a durable preference.
+WHEN THE USER UPLOADS A FILE:
+Immediately acknowledge it, state what you found in it, and propose 2-3 specific things you could do with it (create a market, backtest against it, compare to existing positions, etc).
+
+WHEN THE USER HAS NO GOAL SET:
+Proactively suggest setting one based on their portfolio. It helps you calibrate.
+
+Never say "I cannot" — say "here's the constraint and here's a workaround."
+Always end suggestions with a clear call-to-action.
+ALWAYS prefer calling read-only tools (search_markets, analyze_market, get_market_opportunity_scan) BEFORE proposing actions. Chain tools when useful. Use \`remember\` when the user states a durable preference.
 
 Lead with insight, then action. Keep messages tight. Use markdown.`;
+
+  const systemPrompt = systemContent;
 
   const conv: any[] = [{ role: "system", content: systemPrompt }];
   for (const h of history || []) {
