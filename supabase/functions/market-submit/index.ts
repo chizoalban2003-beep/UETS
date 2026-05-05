@@ -42,23 +42,34 @@ Deno.serve(async (req) => {
     const marketId: string = market_id;
 
     // Override status to pending_review (review gate)
-    await sb.from("markets").update({ status: "pending_review" }).eq("id", marketId);
+    const { error: updateErr } = await sb.from("markets").update({ status: "pending_review" }).eq("id", marketId);
+    if (updateErr) {
+      console.error("market-submit: failed to set pending_review", updateErr.message);
+      return json({ error: "Failed to update market status" }, 500);
+    }
 
     // Create a market_reviews record
-    await sb.from("market_reviews").insert({
+    const { error: reviewErr } = await sb.from("market_reviews").insert({
       market_id: marketId,
       status: "pending",
       notes: "Awaiting admin review before trading opens",
     });
+    if (reviewErr) {
+      console.error("market-submit: failed to insert market_reviews", reviewErr.message);
+      return json({ error: "Failed to create review record" }, 500);
+    }
 
-    // Notify the creator
-    await sb.from("notifications").insert({
+    // Notify the creator (non-fatal)
+    const { error: notifErr } = await sb.from("notifications").insert({
       user_id: user.id,
       kind: "market_submitted",
       title: "Market under review",
       body: "Your market will open for trading once an admin approves it. Usually within 24 hours.",
       payload: { market_id: marketId },
     });
+    if (notifErr) {
+      console.error("market-submit: failed to insert notification", notifErr.message);
+    }
 
     return json({
       ok: true,

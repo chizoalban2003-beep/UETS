@@ -59,6 +59,6 @@ Deno.serve(async (req) => {
     return json({ url: session.url });
   } catch (e: any) {
     console.error("kyc-start error:", e);
-    return json({ error: String(e?.message || e) }, 500);
+    return json({ error: e?.message ?? "Internal server error" }, 500);
   }
 });

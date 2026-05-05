@@ -69,6 +69,6 @@ Deno.serve(async (req) => {
     return json({ received: true });
   } catch (e: any) {
     console.error("kyc-webhook error:", e);
-    return json({ error: String(e?.message || e) }, 400);
+    return json({ error: e?.message ?? "Invalid request" }, 400);
   }
 });
