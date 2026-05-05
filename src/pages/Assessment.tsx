@@ -14,7 +14,8 @@ type Question = {
   explain: string;
 };
 
-const QUIZ: Question[] = [
+// Questions are loaded from DB; this is a fallback in case DB is unavailable
+const QUIZ_FALLBACK: Question[] = [
   {
     q: "What does a Distortion contract pay out at resolution?",
     options: [
@@ -117,6 +118,7 @@ const SIM_PASS = 75;
 
 export default function Assessment() {
   const { user } = useAuth();
+  const [quiz, setQuiz] = useState<Question[]>(QUIZ_FALLBACK);
   const [eligibility, setEligibility] = useState<any>(null);
   const [attempts, setAttempts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,12 +136,23 @@ export default function Assessment() {
   const load = async () => {
     if (!user) return;
     setLoading(true);
-    const [{ data: el }, { data: at }] = await Promise.all([
+    const [{ data: el }, { data: at }, { data: qs }] = await Promise.all([
       supabase.from("user_capital_eligibility").select("*").eq("user_id", user.id).maybeSingle(),
       supabase.from("assessment_attempts").select("*").eq("user_id", user.id).order("created_at", { ascending: false }),
+      supabase.from("assessment_questions").select("*").eq("stage", "quiz").eq("active", true).order("position"),
     ]);
     setEligibility(el);
     setAttempts(at || []);
+    if (qs && qs.length > 0) {
+      setQuiz(
+        (qs as any[]).map((q) => ({
+          q: q.question,
+          options: Array.isArray(q.options) ? q.options : JSON.parse(q.options),
+          answer: q.answer_index,
+          explain: q.explanation,
+        }))
+      );
+    }
     setLoading(false);
   };
 
@@ -150,20 +163,20 @@ export default function Assessment() {
   const isEligible = !!eligibility?.eligible;
 
   const submitQuiz = async () => {
-    if (answers.length !== QUIZ.length || answers.some((a) => a === undefined)) {
+    if (answers.length !== quiz.length || answers.some((a) => a === undefined)) {
       toast.error("Answer every question first");
       return;
     }
     setSubmitting(true);
-    const score = answers.reduce((acc, a, i) => acc + (a === QUIZ[i].answer ? 1 : 0), 0);
+    const score = answers.reduce((acc, a, i) => acc + (a === quiz[i].answer ? 1 : 0), 0);
     const passed = score >= QUIZ_PASS;
     try {
       const { error } = await supabase.functions.invoke("assessment-grade-quiz", {
-        body: { score, total: QUIZ.length, passed, answers },
+        body: { score, total: quiz.length, passed, answers },
       });
       if (error) throw error;
       setSubmitted(true);
-      toast.success(passed ? `Passed: ${score}/${QUIZ.length}` : `Score ${score}/${QUIZ.length} — need ${QUIZ_PASS} to pass`);
+      toast.success(passed ? `Passed: ${score}/${quiz.length}` : `Score ${score}/${quiz.length} — need ${QUIZ_PASS} to pass`);
       await load();
     } catch (e: any) {
       toast.error(e?.message || "Could not save attempt");
@@ -205,7 +218,7 @@ export default function Assessment() {
         <StageCard
           n={1}
           title="Literacy quiz"
-          subtitle={`Score ≥ ${QUIZ_PASS}/${QUIZ.length} on platform mechanics`}
+          subtitle={`Score ≥ ${QUIZ_PASS}/${quiz.length} on platform mechanics`}
           done={quizPassed}
           locked={false}
           onStart={() => setStage("quiz")}
@@ -239,7 +252,7 @@ export default function Assessment() {
             <Button variant="ghost" size="sm" onClick={() => { setStage("overview"); setSubmitted(false); }}>Back</Button>
           </div>
           <div className="space-y-5">
-            {QUIZ.map((q, i) => (
+            {quiz.map((q, i) => (
               <div key={i} className="border-b border-border/60 pb-4 last:border-0">
                 <div className="font-medium text-sm mb-2">{i + 1}. {q.q}</div>
                 <div className="space-y-1.5">

@@ -1,5 +1,5 @@
 // Stripe webhook handler. Maps subscription events to subscriptions.tier.
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { type StripeEnv, verifyWebhook } from "../_shared/stripe.ts";
 
 let _supabase: ReturnType<typeof createClient> | null = null;

@@ -1,6 +1,9 @@
 // One-shot tester for a custom JSON URL oracle. Returns the parsed numeric value
 // without persisting anything. Used by the MarketNew "Test fetch" button.
-import { corsHeaders } from "npm:@supabase/supabase-js@2.95.0/cors";
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
 function jsonPathGet(obj: any, path: string): any {
   if (!path) return obj;

@@ -8,6 +8,7 @@ import CaretakerDock from "@/components/CaretakerDock";
 import DemoBadge from "@/components/DemoBadge";
 import OnboardingTour from "@/components/OnboardingTour";
 import NotificationsBell from "@/components/NotificationsBell";
+import ThemeToggle from "@/components/ThemeToggle";
 import { BRAND } from "@/lib/brand";
 
 export default function Layout() {
@@ -63,11 +64,13 @@ export default function Layout() {
             <NavLink to="/goals" className={linkCls}><Target className="w-4 h-4" />Goals</NavLink>
             <NavLink to="/reports" className={linkCls}><FileText className="w-4 h-4" />Reports</NavLink>
             <NavLink to="/assessment" className={linkCls}><ShieldCheck className="w-4 h-4" />Assessment</NavLink>
+            <NavLink to="/leaderboard" className={linkCls}>Leaderboard</NavLink>
             {user && <NavLink to="/billing" className={linkCls}><CreditCard className="w-4 h-4" />Billing</NavLink>}
           </nav>
 
           <div className="flex items-center gap-3">
             <DemoBadge />
+            <ThemeToggle />
             {user && <NotificationsBell />}
             {user && balance !== null && (
               <div className="hidden sm:flex flex-col items-end leading-tight">
