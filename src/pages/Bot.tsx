@@ -29,6 +29,7 @@ function CaretakerModePanel() {
   useEffect(() => {
     document.title = "Bot · Driftworks";
     if (!user) return;
+    supabase.from("profiles").select("skill_level,caretaker_mode").eq("id", user.id).maybeSingle().then(({ data }) => {
       if (data) {
         setMode(((data as any).caretaker_mode || "suggest") as CaretakerMode);
         setSkill(((data as any).skill_level || "beginner") as any);

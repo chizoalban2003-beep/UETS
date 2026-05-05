@@ -1,6 +1,6 @@
 // Centralised error logging for all edge functions.
 // Logs to stderr (visible in Supabase Edge Function logs) and optionally
-// perserts a row into the error_logs table when a service-role client is available.
+// persists a row into the error_logs table when a service-role client is available.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 
 export interface LogContext {

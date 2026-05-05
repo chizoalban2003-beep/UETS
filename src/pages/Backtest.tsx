@@ -36,6 +36,11 @@ export default function Backtest() {
   useEffect(() => {
     document.title = "Backtest · Driftworks";
     (async () => {
+      const { data } = await supabase
+        .from("markets")
+        .select("id,name,category,status,data_source_id")
+        .eq("status", "open")
+        .not("data_source_id", "is", null)
         .order("created_at", { ascending: false })
         .limit(40);
       setMarkets(data || []);

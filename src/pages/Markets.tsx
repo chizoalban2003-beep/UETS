@@ -34,6 +34,9 @@ export default function Markets() {
   useEffect(() => {
     document.title = "Markets · Driftworks";
     supabase
+      .from("markets")
+      .select("*")
+      .order("created_at", { ascending: false })
       .then(({ data }) => {
         setMarkets((data as Market[]) || []);
         setLoading(false);

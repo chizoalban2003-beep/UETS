@@ -46,7 +46,7 @@ export default function MarketNew() {
 
   useEffect(() => { document.title = "New market · Driftworks"; }, []);
 
-
+  const [marketKind, setMarketKind] = useState<MarketKind>("time_series");
   const [eventOracle, setEventOracle] = useState<EventOracle>("kalshi");
   const [eventOracleRef, setEventOracleRef] = useState("");
 

@@ -92,6 +92,10 @@ export default function Billing() {
   useEffect(() => {
     document.title = "Billing · Driftworks";
     if (!user) return;
+    let mounted = true;
+    const load = async () => {
+      const { data: s } = await supabase
+        .from("subscriptions")
         .select("tier,status,current_period_end")
         .eq("user_id", user.id)
         .maybeSingle();
