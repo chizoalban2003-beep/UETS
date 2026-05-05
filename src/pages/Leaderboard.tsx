@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -72,7 +73,12 @@ export default function Leaderboard() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm truncate">{r.display_name}</span>
+                    <Link
+                      to={`/creators/${r.user_id}`}
+                      className="font-medium text-sm truncate hover:underline"
+                    >
+                      {r.display_name}
+                    </Link>
                     {isMe && (
                       <Badge variant="secondary" className="text-[10px]">
                         You

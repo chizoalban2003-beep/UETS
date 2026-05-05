@@ -20,10 +20,12 @@ import Goals from "./pages/Goals";
 import Backtest from "./pages/Backtest";
 import Assessment from "./pages/Assessment";
 import Billing from "./pages/Billing";
+import Credits from "./pages/Credits";
 import Marketplace from "./pages/Marketplace";
 import NotFound from "./pages/NotFound.tsx";
 import Leaderboard from "./pages/Leaderboard";
 import Admin from "./pages/Admin";
+import CreatorProfile from "./pages/CreatorProfile";
 
 const queryClient = new QueryClient();
 
@@ -51,8 +53,10 @@ const App = () => (
               <Route path="/backtest" element={<RequireAuth><Backtest /></RequireAuth>} />
               <Route path="/assessment" element={<RequireAuth><Assessment /></RequireAuth>} />
               <Route path="/billing" element={<RequireAuth><Billing /></RequireAuth>} />
+              <Route path="/credits" element={<RequireAuth><Credits /></RequireAuth>} />
               <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
+              <Route path="/creators/:creatorId" element={<CreatorProfile />} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>

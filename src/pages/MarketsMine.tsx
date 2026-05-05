@@ -182,7 +182,13 @@ function Row({ m, busy, children }: { m: any; busy: boolean; children: React.Rea
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs uppercase tracking-wider text-muted-foreground">{m.category || "general"}</span>
-            <Badge variant="outline" className="text-[10px]">{m.status}</Badge>
+            {m.status === "pending_review" ? (
+              <Badge variant="outline" className="text-[10px] border-amber-500/50 text-amber-600 dark:text-amber-400">
+                Under review
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="text-[10px]">{m.status}</Badge>
+            )}
           </div>
           <Link to={`/markets/${m.id}`} className="font-medium hover:underline">{m.name}</Link>
           <div className="mt-2"><MarketLifecycle status={m.status} /></div>

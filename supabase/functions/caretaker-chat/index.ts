@@ -982,7 +982,7 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
   }
   if (name === "get_market_opportunity_scan") {
     const strategy = args.strategy || "mixed";
-    const limit = args.limit || 5;
+    const limit = args.max_results ?? args.limit ?? 5;
 
     const { data: markets } = await supabase
       .from("markets")
@@ -991,7 +991,7 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
       .not("data_source_id", "is", null)
       .limit(30);
 
-    if (!markets || markets.length === 0) return { opportunities: [] };
+    if (!markets || markets.length === 0) return { opportunities: [], scanned: 0 };
 
     const scored: any[] = [];
     for (const m of markets) {
@@ -1001,17 +1001,17 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
         .eq("market_id", m.id)
         .order("ts", { ascending: false })
         .limit(30);
-      if (!pts || pts.length < 5) continue;
+      if (!pts || pts.length < 3) continue;
 
       const points = pts.map((p: any) => ({ ts: new Date(p.ts).getTime(), value: Number(p.value) })).reverse();
       const trendFn = fitTrend(points, m.trend_model || "linear");
-      const now = Date.now();
-      const trendNow = trendFn(now);
-      const lastVal = points[points.length - 1].value;
-      const score = distortionScore(lastVal, trendNow, Number(m.band_width), m.band_is_pct);
-      const halfBand = m.band_is_pct ? Math.abs(trendNow) * (Number(m.band_width) / 100) : Number(m.band_width);
-      const direction: string = lastVal > trendNow + halfBand ? "outside_high"
-        : lastVal < trendNow - halfBand ? "outside_low"
+      const last = points[points.length - 1];
+      // Use last data point timestamp (not Date.now()) for accurate in-band evaluation
+      const trendVal = trendFn(last.ts);
+      const score = distortionScore(last.value, trendVal, Number(m.band_width), m.band_is_pct);
+      const halfBand = m.band_is_pct ? Math.abs(trendVal) * (Number(m.band_width) / 100) : Number(m.band_width);
+      const direction: string = last.value > trendVal + halfBand ? "outside_high"
+        : last.value < trendVal - halfBand ? "outside_low"
         : "inside";
 
       // Get YES contract for price
@@ -1029,17 +1029,13 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
         || (direction === "outside_low" && recentAvg < prevAvg);
 
       // recommended_side depends on strategy:
-      // mean_reversion: expect snap-back inside band
-      //   outside_high → buy snapback YES (price will fall back in)
-      //   outside_low  → buy snapback YES (price will rise back in)
-      // momentum: expect continuation
-      //   outside_high → buy distortion YES (price keeps going up)
-      //   outside_low  → buy distortion YES on NO side (price keeps going down) → buy_no
+      // mean_reversion: expect snap-back inside band — snapback YES pays
+      // momentum: expect continuation — follow the break direction
       const recommended_side = direction === "inside"
         ? "buy_yes"
-        : accelerating
-          ? (direction === "outside_high" ? "buy_yes" : "buy_no")  // momentum: follow the break
-          : "buy_yes";  // mean-reversion: snapback YES pays if price returns inside
+        : strategy === "momentum"
+          ? (direction === "outside_high" ? "buy_yes" : "buy_no")
+          : "buy_yes";  // mean-reversion / mixed: snapback YES pays if price returns inside
 
       scored.push({
         market_id: m.id,
@@ -1062,7 +1058,7 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
     else if (strategy === "momentum") filtered = filtered.filter((s) => s.accelerating);
     filtered.sort((a, b) => b.distortion_score - a.distortion_score);
 
-    return { opportunities: filtered.slice(0, limit), total_scanned: markets.length };
+    return { opportunities: filtered.slice(0, limit), scanned: markets.length };
   }
   if (name === "explain_position_risk") {
     const ctx = await getUserContext(supabase, userId);
