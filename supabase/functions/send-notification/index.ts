@@ -12,6 +12,15 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const APP_URL = Deno.env.get("APP_URL") ?? "https://driftworks.app";
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // CTA map: kind → path for push notification deep-links
 const CTA_MAP: Record<string, { path: string }> = {
   kyc_verified: { path: "/credits" },
@@ -78,7 +87,7 @@ Deno.serve(async (req) => {
               from: "Driftworks <notifications@driftworks.app>",
               to: [email],
               subject: n.title,
-              html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto"><h2 style="font-size:18px">${n.title}</h2><p style="color:#555">${n.body ?? ""}</p>${ctaHtml}</div>`,
+              html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto"><h2 style="font-size:18px">${escapeHtml(n.title)}</h2><p style="color:#555">${escapeHtml(n.body ?? "")}</p>${ctaHtml}</div>`,
             }),
           });
         } catch (emailErr) {

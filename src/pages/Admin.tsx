@@ -232,7 +232,7 @@ export default function Admin() {
                       <CheckCircle2 className="w-4 h-4 mr-1" />
                       Approve
                     </Button>
-                    {r.market?.status === "open" && !r.market?.lp_incentive_apy && (
+                    {r.market?.status === "open" && !Number(r.market?.lp_incentive_apy) && (
                       <Button
                         size="sm"
                         variant="ghost"
