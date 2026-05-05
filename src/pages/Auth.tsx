@@ -21,6 +21,7 @@ export default function Auth() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    document.title = "Sign in · Driftworks";
     if (user) nav(loc.state?.from || "/markets", { replace: true });
   }, [user, nav, loc]);
 

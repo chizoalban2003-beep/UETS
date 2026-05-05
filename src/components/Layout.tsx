@@ -28,7 +28,7 @@ export default function Layout() {
     };
     load();
     const ch = supabase
-      .channel("wallet")
+      .channel(`wallet-${user.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "wallets", filter: `user_id=eq.${user.id}` }, load)
       .subscribe();
     return () => {

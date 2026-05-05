@@ -10,11 +10,15 @@ export type StreamEvent =
   | { type: "error"; error: string }
   | { type: "done" };
 
-export async function streamCaretaker(
-  message: string,
-  onEvent: (e: StreamEvent) => void,
-  signal?: AbortSignal,
-) {
+export interface StreamOptions {
+  message: string;
+  fileAttachmentIds?: string[];
+  onEvent: (e: StreamEvent) => void;
+  signal?: AbortSignal;
+}
+
+export async function streamCaretaker(options: StreamOptions): Promise<void> {
+  const { message, fileAttachmentIds, onEvent, signal } = options;
   const { data: { session } } = await supabase.auth.getSession();
   const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/caretaker-chat`, {
     method: "POST",
@@ -23,7 +27,7 @@ export async function streamCaretaker(
       Authorization: `Bearer ${session?.access_token}`,
       apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
     },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, file_attachment_ids: fileAttachmentIds ?? [] }),
     signal,
   });
 

@@ -27,8 +27,8 @@ function CaretakerModePanel() {
   const [mode, setMode] = useState<CaretakerMode>("suggest");
   const [skill, setSkill] = useState<"beginner" | "intermediate" | "advanced">("beginner");
   useEffect(() => {
+    document.title = "Bot · Driftworks";
     if (!user) return;
-    supabase.from("profiles").select("skill_level,caretaker_mode").eq("id", user.id).maybeSingle().then(({ data }) => {
       if (data) {
         setMode(((data as any).caretaker_mode || "suggest") as CaretakerMode);
         setSkill(((data as any).skill_level || "beginner") as any);
@@ -157,7 +157,7 @@ export default function BotPage() {
   useEffect(() => {
     if (!user) return;
     const ch = supabase
-      .channel("bot-suggestions")
+      .channel(`bot-suggestions-${user.id}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "bot_suggestions", filter: `user_id=eq.${user.id}` },

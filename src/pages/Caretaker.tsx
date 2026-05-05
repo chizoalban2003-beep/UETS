@@ -82,13 +82,16 @@ export default function Caretaker() {
   };
 
   useEffect(() => { loadProfile(); load(); }, [user]);
+  useEffect(() => {
+    document.title = "Caretaker · Driftworks";
+  }, []);
   useEffect(() => () => abortRef.current?.abort(), []);
 
   // Realtime: new briefings
   useEffect(() => {
     if (!user) return;
     const ch = supabase
-      .channel("caretaker-events")
+      .channel(`caretaker-events-${user.id}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "caretaker_events", filter: `user_id=eq.${user.id}` }, (payload) => {
         setEvents((prev) => [payload.new as any, ...prev].slice(0, 30));
       })
@@ -138,25 +141,29 @@ export default function Caretaker() {
     const ac = new AbortController();
     abortRef.current = ac;
 
-    await streamCaretaker(text, (e) => {
-      if (e.type === "text") {
-        setMessages((prev) => prev.map((m) => (m.id === asstMsgId ? { ...m, content: (m.content || "") + e.delta } : m)));
-        scrollDown();
-      } else if (e.type === "tool_call") {
-        setToolStatuses((prev) => {
-          const ex = prev.find((t) => t.id === e.id);
-          if (ex) return prev.map((t) => (t.id === e.id ? { ...t, status: e.status } : t));
-          return [...prev, { id: e.id, name: e.name, status: e.status }];
-        });
-      } else if (e.type === "pending") {
-        setPending(e.items);
-      } else if (e.type === "error") {
-        toast.error(e.error);
-      } else if (e.type === "done") {
-        setBusy(false);
-        load();
-      }
-    }, ac.signal);
+    await streamCaretaker({
+      message: text,
+      signal: ac.signal,
+      onEvent: (e) => {
+        if (e.type === "text") {
+          setMessages((prev) => prev.map((m) => (m.id === asstMsgId ? { ...m, content: (m.content || "") + e.delta } : m)));
+          scrollDown();
+        } else if (e.type === "tool_call") {
+          setToolStatuses((prev) => {
+            const ex = prev.find((t) => t.id === e.id);
+            if (ex) return prev.map((t) => (t.id === e.id ? { ...t, status: e.status } : t));
+            return [...prev, { id: e.id, name: e.name, status: e.status }];
+          });
+        } else if (e.type === "pending") {
+          setPending(e.items);
+        } else if (e.type === "error") {
+          toast.error(e.error);
+        } else if (e.type === "done") {
+          setBusy(false);
+          load();
+        }
+      },
+    });
   };
 
   const respond = async (p: Pending, approved: boolean) => {

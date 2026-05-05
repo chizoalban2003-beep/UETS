@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -44,7 +44,9 @@ export default function MarketNew() {
   const { user } = useAuth();
   const nav = useNavigate();
 
-  const [marketKind, setMarketKind] = useState<MarketKind>("time_series");
+  useEffect(() => { document.title = "New market · Driftworks"; }, []);
+
+
   const [eventOracle, setEventOracle] = useState<EventOracle>("kalshi");
   const [eventOracleRef, setEventOracleRef] = useState("");
 

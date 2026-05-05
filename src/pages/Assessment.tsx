@@ -156,6 +156,10 @@ export default function Assessment() {
     setLoading(false);
   };
 
+  useEffect(() => {
+    document.title = "Assessment · Driftworks";
+  }, []);
+
   useEffect(() => { load(); }, [user]);
 
   const quizPassed = !!eligibility?.quiz_passed_at;

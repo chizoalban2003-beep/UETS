@@ -20,8 +20,8 @@ export default function Admin() {
   const [busy, setBusy] = useState<string | null>(null);
 
   useEffect(() => {
+    document.title = "Admin · Driftworks";
     if (!user) return;
-    // Check admin role
     supabase
       .from("user_roles")
       .select("role")

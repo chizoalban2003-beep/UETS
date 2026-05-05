@@ -58,7 +58,7 @@ export default function NotificationsBell() {
     if (!user) return;
     load();
     const ch = supabase
-      .channel("ct-events-and-notifs")
+      .channel(`ct-events-and-notifs-${user.id}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "caretaker_events", filter: `user_id=eq.${user.id}` },

@@ -45,6 +45,7 @@ export default function MarketDetail() {
       supabase.from("market_disputes").select("*").eq("market_id", id).order("created_at", { ascending: false }),
     ]);
     setMarket(m);
+    if (m?.name) document.title = `${m.name} · Driftworks`;
     setDisputes(dsp || []);
     setPoints((pts || []).map((p) => ({ ts: new Date(p.ts).getTime(), value: Number(p.value) })));
     setContracts(cts || []);
