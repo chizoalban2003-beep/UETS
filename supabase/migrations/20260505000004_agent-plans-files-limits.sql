@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS public.agent_schedules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   plan_id uuid NOT NULL REFERENCES public.agent_plans(id) ON DELETE CASCADE,
-  cron_expr text NOT NULL DEFAULT '*/5 * * * *',
+  cron_expr text NOT NULL DEFAULT '0 9 * * *',
   active boolean NOT NULL DEFAULT true,
   next_run_at timestamptz,
   last_run_at timestamptz,

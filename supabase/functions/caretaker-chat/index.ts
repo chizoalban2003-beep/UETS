@@ -1028,11 +1028,18 @@ async function execTool(supabase: any, userId: string, name: string, args: any) 
       const accelerating = (direction === "outside_high" && recentAvg > prevAvg)
         || (direction === "outside_low" && recentAvg < prevAvg);
 
-      const recommended_side = direction === "outside_high"
-        ? "buy_no"  // price will snap back → buy NO on distortion (snap back inside)
-        : direction === "outside_low"
-          ? "buy_no"
-          : "buy_yes";
+      // recommended_side depends on strategy:
+      // mean_reversion: expect snap-back inside band
+      //   outside_high → buy snapback YES (price will fall back in)
+      //   outside_low  → buy snapback YES (price will rise back in)
+      // momentum: expect continuation
+      //   outside_high → buy distortion YES (price keeps going up)
+      //   outside_low  → buy distortion YES on NO side (price keeps going down) → buy_no
+      const recommended_side = direction === "inside"
+        ? "buy_yes"
+        : accelerating
+          ? (direction === "outside_high" ? "buy_yes" : "buy_no")  // momentum: follow the break
+          : "buy_yes";  // mean-reversion: snapback YES pays if price returns inside
 
       scored.push({
         market_id: m.id,
