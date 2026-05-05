@@ -87,7 +87,21 @@ export default function Admin() {
     loadAll();
   };
 
-  if (isAdmin === null) return <div className="container py-12 text-muted-foreground">Checking access…</div>;
+  const setLpIncentive = async (marketId: string) => {
+    setBusy(marketId + "_lp");
+    const { error } = await supabase.rpc("set_lp_incentive", {
+      _market_id: marketId,
+      _apy: 50,
+      _days: 30,
+      _cap_usd: 500,
+    });
+    setBusy(null);
+    if (error) toast.error(error.message);
+    else toast.success("LP incentive set: 50% APY for 30 days");
+    loadAll();
+  };
+
+
   if (isAdmin === false) return <div className="container py-12 text-bear">Access denied.</div>;
 
   return (
@@ -218,6 +232,16 @@ export default function Admin() {
                       <CheckCircle2 className="w-4 h-4 mr-1" />
                       Approve
                     </Button>
+                    {r.market?.status === "open" && !r.market?.lp_incentive_apy && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={busy === r.market_id + "_lp"}
+                        onClick={() => setLpIncentive(r.market_id)}
+                      >
+                        Set LP incentive
+                      </Button>
+                    )}
                   </div>
                 </div>
               </Card>

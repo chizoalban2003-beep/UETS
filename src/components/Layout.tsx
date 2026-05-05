@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Waves, LayoutGrid, Plus, Wallet, Bot, LogOut, LogIn, Sparkles, FileText, Target, ShieldCheck, Briefcase, CreditCard } from "lucide-react";
+import { Waves, LayoutGrid, Plus, Wallet, Bot, LogOut, LogIn, Sparkles, FileText, Target, ShieldCheck, Briefcase, CreditCard, Settings } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,7 @@ export default function Layout() {
             <NavLink to="/assessment" className={linkCls}><ShieldCheck className="w-4 h-4" />Assessment</NavLink>
             <NavLink to="/leaderboard" className={linkCls}>Leaderboard</NavLink>
             {user && <NavLink to="/billing" className={linkCls}><CreditCard className="w-4 h-4" />Billing</NavLink>}
+            {user && <NavLink to="/settings" className={linkCls}><Settings className="w-4 h-4" />Settings</NavLink>}
           </nav>
 
           <div className="flex items-center gap-3">

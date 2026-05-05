@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import DataSourceBadge from "@/components/DataSourceBadge";
 import MarketLifecycle from "@/components/MarketLifecycle";
-import { Radio, AlertCircle, ShieldAlert, FileText } from "lucide-react";
+import { Radio, AlertCircle, ShieldAlert, FileText, Zap } from "lucide-react";
 
 type Market = any;
 type Contract = any;
@@ -113,6 +113,12 @@ export default function MarketDetail() {
             <div className="text-xs text-muted-foreground">
               Creator stake <span className="font-mono-num text-foreground">${Number(market.creator_stake).toFixed(0)}</span>
             </div>
+          )}
+          {Number(market.lp_incentive_apy) > 0 && market.lp_incentive_expires_at && (
+            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-bull/10 text-bull font-medium mt-1">
+              <Zap className="w-3 h-3" />
+              +{market.lp_incentive_apy}% APY LP bonus · expires {format(new Date(market.lp_incentive_expires_at), "d MMM")}
+            </span>
           )}
         </div>
       </div>

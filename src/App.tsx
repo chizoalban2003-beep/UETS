@@ -26,6 +26,7 @@ import NotFound from "./pages/NotFound.tsx";
 import Leaderboard from "./pages/Leaderboard";
 import Admin from "./pages/Admin";
 import CreatorProfile from "./pages/CreatorProfile";
+import Settings from "./pages/Settings";
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,7 @@ const App = () => (
               <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
               <Route path="/creators/:creatorId" element={<CreatorProfile />} />
+              <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
