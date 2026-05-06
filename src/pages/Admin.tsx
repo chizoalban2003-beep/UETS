@@ -105,6 +105,7 @@ export default function Admin() {
   };
 
 
+  if (isAdmin === null) return <div className="container py-12 text-muted-foreground">Checking permissions…</div>;
   if (isAdmin === false) return <div className="container py-12 text-bear">Access denied.</div>;
 
   return (
