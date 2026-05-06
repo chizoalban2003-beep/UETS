@@ -80,6 +80,12 @@ export default function MarketDetail() {
 
   useEffect(() => {
     load();
+    return () => {
+      // Restore default OG tags on unmount
+      document.title = "Driftworks — Trade the drift from trend";
+      document.querySelector('meta[property="og:title"]')?.setAttribute("content", "Driftworks — Trade the drift from trend");
+      document.querySelector('meta[property="og:description"]')?.setAttribute("content", "Driftworks: prediction markets anchored to real-world trends.");
+    };
   }, [load]);
 
   // Realtime contracts (so prices update live) + new data points

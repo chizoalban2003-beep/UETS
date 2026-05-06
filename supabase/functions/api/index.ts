@@ -134,12 +134,29 @@ Deno.serve(async (req) => {
       return json({ ok: true, wallet: walletRes.data, positions: positionsRes.data ?? [] });
     }
 
-    // POST /trades — requires RPC auth workaround (not yet supported via API key)
+    // POST /trades — execute a trade on behalf of the API key owner via _actor_id
     if (resource === "trades" && req.method === "POST") {
-      return json({
-        ok: false,
-        error: "Trade execution via API key requires server-side auth — coming in v2",
-      }, 501);
+      const body = await req.json();
+      if (!body.contract_id || !body.side || !body.shares) {
+        return json({ error: "contract_id, side, shares required" }, 400);
+      }
+      const validSides = ["buy_yes", "buy_no", "sell_yes", "sell_no"];
+      if (!validSides.includes(body.side)) {
+        return json({ error: `side must be one of: ${validSides.join(", ")}` }, 400);
+      }
+      const shares = Number(body.shares);
+      if (!Number.isFinite(shares) || shares <= 0) {
+        return json({ error: "shares must be a positive number" }, 400);
+      }
+      const { data, error } = await sb.rpc("execute_trade", {
+        _contract_id: body.contract_id,
+        _side: body.side,
+        _shares: shares,
+        _by_bot: true,
+        _actor_id: (key as any).user_id,
+      });
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true, trade: data });
     }
 
     return json({ error: `Unknown endpoint: /${path || ""}` }, 404);

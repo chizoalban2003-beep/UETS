@@ -1,6 +1,7 @@
 // lp-incentive-payout — credit daily LP incentive bonuses to eligible liquidity providers.
 // Called by pg_cron daily (or from agent-scheduler).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { logError } from "../_shared/logger.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -63,7 +64,7 @@ Deno.serve(async (req) => {
 
     return json({ ok: true, paid });
   } catch (e: any) {
-    console.error("lp-incentive-payout error:", e);
-    return json({ error: e?.message ?? "Internal server error" }, 500);
+    await logError(e, { function_name: "lp-incentive-payout" });
+    return json({ error: "Internal server error" }, 500);
   }
 });
