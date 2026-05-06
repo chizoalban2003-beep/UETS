@@ -336,9 +336,37 @@ export default function Assessment() {
                     <Badge variant={simResult.passed ? "default" : "secondary"}>{simResult.passed ? "Passed" : "Try again"}</Badge>
                   </div>
                   <Card className="p-4 bg-secondary/30">
-                    <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Caretaker feedback</div>
-                    <div className="text-sm whitespace-pre-wrap">{simResult.feedback}</div>
+                    <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Caretaker summary</div>
+                    <div className="text-sm whitespace-pre-wrap">{simResult.summary || simResult.feedback}</div>
                   </Card>
+                  {Array.isArray(simResult.decisions) && simResult.decisions.length > 0 && (
+                    <div>
+                      <div className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Decision breakdown</div>
+                      <div className="space-y-2">
+                        {simResult.decisions.map((d: any) => {
+                          const pct = d.points_possible > 0 ? d.points_awarded / d.points_possible : 0;
+                          const cls = pct >= 1 ? "border-bull/40 bg-bull/5" : pct >= 0.5 ? "border-amber-500/40 bg-amber-500/5" : "border-bear/40 bg-bear/5";
+                          return (
+                            <div key={d.index} className={`rounded-lg border p-3 ${cls}`}>
+                              <div className="flex items-start justify-between gap-2 mb-1">
+                                <span className="text-xs font-medium">Decision {d.index}</span>
+                                <span className="text-xs font-mono-num">
+                                  {d.points_awarded}/{d.points_possible}pts
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-xs mb-1">
+                                <div><span className="text-muted-foreground">You: </span>{d.user_action}</div>
+                                <div><span className="text-muted-foreground">Optimal: </span>{d.optimal_action}</div>
+                              </div>
+                              {d.explanation && (
+                                <div className="text-xs text-muted-foreground italic">{d.explanation}</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <Button onClick={() => { setSimResult(null); }} variant="outline" className="w-full">Run again</Button>
                 </div>
               )}

@@ -34,6 +34,7 @@ export default function Settings() {
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [displayName, setDisplayName] = useState("");
+  const [leaderboardPublic, setLeaderboardPublic] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -50,14 +51,17 @@ export default function Settings() {
         if (data) setPrefs({ ...DEFAULT_PREFS, ...data });
       });
 
-    // Load display name
+    // Load display name + leaderboard preference
     supabase
       .from("profiles")
-      .select("display_name")
+      .select("display_name, leaderboard_public")
       .eq("id", user.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (data) setDisplayName((data as any).display_name ?? "");
+        if (data) {
+          setDisplayName((data as any).display_name ?? "");
+          setLeaderboardPublic((data as any).leaderboard_public ?? true);
+        }
       });
 
     // Check push state from browser
@@ -81,7 +85,7 @@ export default function Settings() {
     setSaving(true);
     const { error } = await supabase
       .from("profiles")
-      .update({ display_name: displayName.trim() || null })
+      .update({ display_name: displayName.trim() || null, leaderboard_public: leaderboardPublic })
       .eq("id", user.id);
     setSaving(false);
     if (error) toast.error(error.message);
@@ -117,6 +121,16 @@ export default function Settings() {
                 {saving ? "Saving…" : "Save"}
               </Button>
             </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <Label className="font-normal">Show me on the leaderboard</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Your name and P&L appear on the public leaderboard</p>
+            </div>
+            <Switch
+              checked={leaderboardPublic}
+              onCheckedChange={(v) => setLeaderboardPublic(v)}
+            />
           </div>
           <p className="text-xs text-muted-foreground">Email: {user?.email ?? "—"}</p>
         </CardContent>

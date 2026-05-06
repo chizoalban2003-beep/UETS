@@ -3,7 +3,10 @@
 //   open -> pending_resolution (when resolution_at passed)
 //   pending_resolution -> disputable (records final_value from latest data point, sets final_posted_at)
 //   disputable -> resolved (after 24h dispute window with no open disputes; settles payouts via RPC)
+// Also polls ingest-data for live markets due for a data refresh.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { logError } from "../_shared/logger.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -33,7 +36,7 @@ Deno.serve(async (req) => {
     // 2. pending_resolution -> disputable (post final value from latest data point)
     const { data: pending } = await supabase
       .from("markets")
-      .select("id, data_source_id")
+      .select("id, data_source_id, dispute_window_hours")
       .eq("status", "pending_resolution");
     for (const m of pending || []) {
       if (!m.data_source_id) continue; // manual markets stay in pending_resolution until creator posts
@@ -59,14 +62,15 @@ Deno.serve(async (req) => {
       results.push({ id: m.id, step: "pending_resolution->disputable", final_value: Number(latest.value) });
     }
 
-    // 3. disputable -> resolved (after window, no open disputes)
-    const cutoff = new Date(Date.now() - DISPUTE_WINDOW_MS).toISOString();
+    // 3. disputable -> resolved (after dispute_window_hours, no open disputes)
     const { data: disputable } = await supabase
       .from("markets")
-      .select("id, final_value")
-      .eq("status", "disputable")
-      .lte("final_posted_at", cutoff);
+      .select("id, final_value, dispute_window_hours, final_posted_at")
+      .eq("status", "disputable");
     for (const m of disputable || []) {
+      const windowMs = (m.dispute_window_hours ?? 24) * 60 * 60 * 1000;
+      const cutoff = new Date(Date.now() - windowMs).toISOString();
+      if ((m.final_posted_at ?? "") > cutoff) continue; // window still open
       const { count } = await supabase
         .from("market_disputes")
         .select("id", { count: "exact", head: true })
@@ -84,10 +88,40 @@ Deno.serve(async (req) => {
       else results.push({ id: m.id, step: "disputable->resolved" });
     }
 
+    // 4. Trigger ingest-data for live markets due for a refresh
+    const { data: liveSources } = await supabase
+      .from("data_sources")
+      .select("id, market_id, fetch_interval_minutes, last_fetched_at, markets!inner(live_data_feed, status)")
+      .eq("markets.live_data_feed", true)
+      .eq("markets.status", "open");
+    let ingestTriggered = 0;
+    for (const src of liveSources ?? []) {
+      const intervalMs = (src.fetch_interval_minutes ?? 5) * 60 * 1000;
+      const due = !src.last_fetched_at ||
+        Date.now() - new Date(src.last_fetched_at).getTime() > intervalMs;
+      if (due) {
+        try {
+          await fetch(`${SUPABASE_URL}/functions/v1/ingest-data`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${SERVICE_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ source_id: src.id }),
+          });
+          ingestTriggered++;
+        } catch (e: any) {
+          results.push({ source_id: src.id, step: "ingest trigger failed", error: e?.message });
+        }
+      }
+    }
+    if (ingestTriggered) results.push({ step: "live-ingest-triggered", count: ingestTriggered });
+
     return new Response(JSON.stringify({ ok: true, results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e: any) {
+    await logError(e, { function_name: "auto-resolve" });
     return new Response(JSON.stringify({ error: String(e?.message || e) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

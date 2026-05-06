@@ -27,8 +27,15 @@ export default function Leaderboard() {
     supabase
       .from("leaderboard")
       .select("*")
-      .then(({ data }) => {
-        setRows((data as Row[]) || []);
+      .then(async ({ data }) => {
+        const all = (data as Row[]) || [];
+        // Filter out users who have opted out of public leaderboard
+        const { data: optOut } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("leaderboard_public", false);
+        const hiddenIds = new Set((optOut ?? []).map((p: any) => p.id));
+        setRows(all.filter((r) => !hiddenIds.has(r.user_id)));
         setLoading(false);
       });
   }, []);

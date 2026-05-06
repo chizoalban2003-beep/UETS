@@ -16,6 +16,7 @@ export default function Admin() {
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [disputes, setDisputes] = useState<any[]>([]);
   const [reviews, setReviews] = useState<any[]>([]);
+  const [waitlist, setWaitlist] = useState<any[]>([]);
   const [stats, setStats] = useState<any>({});
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -36,16 +37,18 @@ export default function Admin() {
   }, [user]);
 
   const loadAll = async () => {
-    const [{ data: d }, { data: r }, { data: markets }, { data: users }, { data: trades }] =
+    const [{ data: d }, { data: r }, { data: markets }, { data: users }, { data: trades }, { data: wl }] =
       await Promise.all([
         supabase.from("market_disputes").select("*, market:markets(id,name,creator_id)").eq("status", "open").order("created_at", { ascending: false }),
         supabase.from("market_reviews").select("*, market:markets(id,name)").eq("status", "pending").order("created_at", { ascending: false }).limit(20),
         supabase.from("markets").select("id", { count: "exact", head: true }),
         supabase.from("profiles").select("id", { count: "exact", head: true }),
         supabase.from("trades").select("id", { count: "exact", head: true }),
+        supabase.from("waitlist").select("id,email,source,created_at").order("created_at", { ascending: false }).limit(500),
       ]);
     setDisputes(d || []);
     setReviews(r || []);
+    setWaitlist(wl || []);
     setStats({
       markets: (markets as any)?.count ?? 0,
       users: (users as any)?.count ?? 0,
@@ -143,6 +146,12 @@ export default function Admin() {
             Market reviews
             {reviews.length > 0 && (
               <Badge variant="default" className="ml-2 h-5 px-1.5">{reviews.length}</Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="waitlist">
+            Waitlist
+            {waitlist.length > 0 && (
+              <Badge variant="secondary" className="ml-2 h-5 px-1.5">{waitlist.length}</Badge>
             )}
           </TabsTrigger>
         </TabsList>
@@ -247,6 +256,62 @@ export default function Admin() {
               </Card>
             ))
           )}
+        </TabsContent>
+
+        <TabsContent value="waitlist" className="mt-4">
+          <Card className="p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-medium">Waitlist signups</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">{waitlist.length} total signups</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const csv = ["email,source,joined",
+                    ...waitlist.map((w) => `${w.email},${w.source ?? ""},${w.created_at}`),
+                  ].join("\n");
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+                  a.download = "driftworks-waitlist.csv";
+                  a.click();
+                }}
+                disabled={waitlist.length === 0}
+              >
+                Export CSV
+              </Button>
+            </div>
+            {waitlist.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No waitlist signups yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/60 text-left">
+                      <th className="pb-2 font-medium text-muted-foreground text-xs uppercase tracking-wider">Email</th>
+                      <th className="pb-2 font-medium text-muted-foreground text-xs uppercase tracking-wider">Source</th>
+                      <th className="pb-2 font-medium text-muted-foreground text-xs uppercase tracking-wider">Joined</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {waitlist.slice(0, 100).map((w) => (
+                      <tr key={w.id}>
+                        <td className="py-2 font-mono text-xs">{w.email}</td>
+                        <td className="py-2 text-xs text-muted-foreground">{w.source ?? "—"}</td>
+                        <td className="py-2 text-xs text-muted-foreground">
+                          {formatDistanceToNow(new Date(w.created_at), { addSuffix: true })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {waitlist.length > 100 && (
+                  <p className="text-xs text-muted-foreground mt-2">Showing 100 of {waitlist.length}. Export CSV for full list.</p>
+                )}
+              </div>
+            )}
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
