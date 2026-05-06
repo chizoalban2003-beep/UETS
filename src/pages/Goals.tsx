@@ -89,6 +89,7 @@ export default function Goals() {
   };
 
   useEffect(() => {
+    document.title = "Goals · Driftworks";
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);

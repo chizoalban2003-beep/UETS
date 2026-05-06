@@ -145,6 +145,72 @@ async function fetchCustomUrl(src: Source): Promise<{ ts: number; value: number 
   return { ts: Date.now(), value: num };
 }
 
+// ---- sports adapters -------------------------------------------------------
+
+async function fetchEspnSoccer(params: any): Promise<{ ts: number; value: number }> {
+  // params: { event_id: string, team: 'home'|'away', stat: 'corners'|'yellowCards'|'shotsOnTarget'|'possession'|'goals' }
+  const { event_id, team = "home", stat = "goals" } = params;
+  const r = await fetch(
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/summary?event=${event_id}`,
+    { headers: { "User-Agent": "Mozilla/5.0" } },
+  );
+  if (!r.ok) throw new Error(`espn_soccer ${r.status}`);
+  const j = await r.json();
+  const teamIdx = team === "home" ? 0 : 1;
+  const teamStats = j?.boxscore?.teams?.[teamIdx]?.statistics;
+  if (!Array.isArray(teamStats)) throw new Error("espn_soccer: statistics missing");
+  const entry = teamStats.find(
+    (s: any) => (s.name || "").toLowerCase() === String(stat).toLowerCase() ||
+                (s.displayName || "").toLowerCase().includes(String(stat).toLowerCase()),
+  );
+  if (!entry) throw new Error(`espn_soccer: stat '${stat}' not found`);
+  const v = Number(entry.displayValue ?? entry.value);
+  if (!Number.isFinite(v)) throw new Error(`espn_soccer: value for '${stat}' not numeric`);
+  return { ts: Date.now(), value: v };
+}
+
+async function fetchFootballData(params: any): Promise<{ ts: number; value: number }> {
+  // params: { match_id: number, team: 'home'|'away', stat: string }
+  const { match_id, team = "home", stat = "goals" } = params;
+  const apiKey = Deno.env.get("FOOTBALL_DATA_API_KEY");
+  if (!apiKey) throw new Error("FOOTBALL_DATA_API_KEY not set");
+  const r = await fetch(`https://api.football-data.org/v4/matches/${match_id}`, {
+    headers: { "X-Auth-Token": apiKey },
+  });
+  if (!r.ok) throw new Error(`football_data ${r.status}`);
+  const j = await r.json();
+  const side = team === "home" ? "homeTeam" : "awayTeam";
+  const statsObj = j?.match?.[side] ?? j?.[side];
+  if (!statsObj) throw new Error(`football_data: team stats missing for '${team}'`);
+  const v = Number(statsObj[stat] ?? statsObj?.statistics?.[stat]);
+  if (!Number.isFinite(v)) throw new Error(`football_data: stat '${stat}' not found or not numeric`);
+  return { ts: Date.now(), value: v };
+}
+
+async function fetchSofascore(params: any): Promise<{ ts: number; value: number }> {
+  // params: { event_id: string, team: 'home'|'away', stat: 'corners'|'yellowCards'|'shotsOnTarget'|'possession' }
+  const { event_id, team = "home", stat = "corners" } = params;
+  const r = await fetch(
+    `https://api.sofascore.com/api/v1/event/${event_id}/statistics`,
+    { headers: { "User-Agent": "Mozilla/5.0 (compatible; Driftworks/1.0)" } },
+  );
+  if (!r.ok) throw new Error(`sofascore_stat ${r.status}`);
+  const j = await r.json();
+  const groups: any[] = j?.statistics?.[0]?.groups ?? [];
+  const teamKey = team === "home" ? "homeValue" : "awayValue";
+  for (const group of groups) {
+    for (const item of group.statisticsItems ?? []) {
+      const key = (item.key || item.name || "").toLowerCase().replace(/[^a-z]/g, "");
+      const needle = String(stat).toLowerCase().replace(/[^a-z]/g, "");
+      if (key === needle || key.includes(needle)) {
+        const v = Number(item[teamKey]);
+        if (Number.isFinite(v)) return { ts: Date.now(), value: v };
+      }
+    }
+  }
+  throw new Error(`sofascore_stat: stat '${stat}' not found for team '${team}'`);
+}
+
 async function fetchOne(src: Source): Promise<{ ts: number; value: number }> {
   if (src.kind === "custom_url") return fetchCustomUrl(src);
   switch (src.provider) {
@@ -156,6 +222,9 @@ async function fetchOne(src: Source): Promise<{ ts: number; value: number }> {
     case "polymarket": return fetchPolymarket(src.provider_params);
     case "kalshi": return fetchKalshi(src.provider_params);
     case "twelvedata": return fetchTwelveData(src.provider_params);
+    case "espn_soccer": return fetchEspnSoccer(src.provider_params);
+    case "football_data": return fetchFootballData(src.provider_params);
+    case "sofascore_stat": return fetchSofascore(src.provider_params);
     default: throw new Error(`unknown provider: ${src.provider}`);
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,8 +27,15 @@ export default function Leaderboard() {
     supabase
       .from("leaderboard")
       .select("*")
-      .then(({ data }) => {
-        setRows((data as Row[]) || []);
+      .then(async ({ data }) => {
+        const all = (data as Row[]) || [];
+        // Filter out users who have opted out of public leaderboard
+        const { data: optOut } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("leaderboard_public", false);
+        const hiddenIds = new Set((optOut ?? []).map((p: any) => p.id));
+        setRows(all.filter((r) => !hiddenIds.has(r.user_id)));
         setLoading(false);
       });
   }, []);
@@ -72,7 +80,12 @@ export default function Leaderboard() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-sm truncate">{r.display_name}</span>
+                    <Link
+                      to={`/creators/${r.user_id}`}
+                      className="font-medium text-sm truncate hover:underline"
+                    >
+                      {r.display_name}
+                    </Link>
                     {isMe && (
                       <Badge variant="secondary" className="text-[10px]">
                         You

@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
   // full grading pipeline. A future iteration will let the user enter their own decisions.
   const messages = [
     { role: "system", content: "You are the Caretaker for Driftworks. You roleplay a candidate making trading decisions in a scripted scenario, then grade those decisions against an optimal reference. Be strict but fair." },
-    { role: "user", content: `${SCENARIO}\n\nGenerate a plausible candidate trade log (a real user attempting the scenario), then grade it.\n\nReturn STRICT JSON with this shape:\n{\n  "candidate_log": "<markdown table or list of decisions per tick>",\n  "score": <integer 0-100>,\n  "feedback": "<2-4 paragraphs explaining what was good, what was suboptimal, and what to improve. Reference specific market mechanics.>"\n}\n\nNo prose outside the JSON.` },
+    { role: "user", content: `${SCENARIO}\n\nGenerate a plausible candidate trade log (a real user attempting the scenario), then grade it.\n\nReturn STRICT JSON with this shape:\n{\n  "candidate_log": "<markdown table or list of decisions per tick>",\n  "total_score": <integer 0-100>,\n  "decisions": [\n    {\n      "index": <number>,\n      "user_action": "<string: what the candidate did>",\n      "optimal_action": "<string: what was ideal>",\n      "points_awarded": <number>,\n      "points_possible": <number>,\n      "explanation": "<1 sentence: why optimal was better or same>"\n    }\n  ],\n  "summary": "<2 sentences: what they did well, what to improve>",\n  "pass": <boolean: total_score >= 75>\n}\n\nNo prose outside the JSON.` },
   ];
 
   const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -74,15 +74,16 @@ Deno.serve(async (req) => {
   const aiJson = await aiResp.json();
   const raw = aiJson?.choices?.[0]?.message?.content || "{}";
   let parsed: any = {};
-  try { parsed = JSON.parse(raw); } catch { parsed = { score: 0, feedback: "Could not parse AI response.", candidate_log: raw }; }
+  try { parsed = JSON.parse(raw); } catch { parsed = { total_score: 0, summary: "Could not parse AI response.", candidate_log: raw, decisions: [] }; }
 
-  const score = Math.max(0, Math.min(100, Number(parsed.score) || 0));
+  const score = Math.max(0, Math.min(100, Number(parsed.total_score ?? parsed.score) || 0));
   const passed = score >= SIM_PASS;
-  const feedback = String(parsed.feedback || "");
+  const summary = String(parsed.summary || parsed.feedback || "");
+  const decisions = Array.isArray(parsed.decisions) ? parsed.decisions : [];
 
   await sb.from("assessment_attempts").insert({
     user_id: user.id, stage: "sim", score, passed,
-    details: { feedback, candidate_log: parsed.candidate_log || null },
+    details: { summary, decisions, candidate_log: parsed.candidate_log || null },
   });
 
   if (passed) {
@@ -100,7 +101,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ ok: true, score, passed, feedback, candidate_log: parsed.candidate_log });
+  return json({ ok: true, score, passed, summary, decisions, candidate_log: parsed.candidate_log });
 });
 
 function json(body: any, status = 200) {

@@ -32,6 +32,7 @@ export default function Markets() {
   const [cat, setCat] = useState("All");
 
   useEffect(() => {
+    document.title = "Markets · Driftworks";
     supabase
       .from("markets")
       .select("*")

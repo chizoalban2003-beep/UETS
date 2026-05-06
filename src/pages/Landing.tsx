@@ -1,9 +1,12 @@
+import { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Activity, Zap, Bot, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 export default function Landing() {
+  useEffect(() => { document.title = "Driftworks · Trade the drift"; }, []);
+
   return (
     <div>
       {/* Hero */}

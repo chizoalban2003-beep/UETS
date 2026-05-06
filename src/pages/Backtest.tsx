@@ -34,6 +34,7 @@ export default function Backtest() {
   const [result, setResult] = useState<BacktestResult | null>(null);
 
   useEffect(() => {
+    document.title = "Backtest · Driftworks";
     (async () => {
       const { data } = await supabase
         .from("markets")

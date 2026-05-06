@@ -58,7 +58,7 @@ export default function CaretakerDock() {
     if (!user) return;
     load();
     const ch = supabase
-      .channel("dock-caretaker")
+      .channel(`dock-caretaker-${user.id}`)
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "caretaker_messages", filter: `user_id=eq.${user.id}` },

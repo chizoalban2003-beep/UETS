@@ -69,7 +69,7 @@ export default function Portfolio() {
     supabase.rpc("record_wallet_snapshot", { _user_id: user.id }).then(() => {});
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { document.title = "Portfolio · Driftworks"; load(); }, [user]);
 
   const onReset = async () => {
     if (!confirm("Reset paper balance to §10,000 and zero all positions? Rate-limited to once per 24h.")) return;

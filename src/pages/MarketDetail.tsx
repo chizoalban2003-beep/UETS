@@ -16,7 +16,8 @@ import { toast } from "sonner";
 import { format, formatDistanceToNow } from "date-fns";
 import DataSourceBadge from "@/components/DataSourceBadge";
 import MarketLifecycle from "@/components/MarketLifecycle";
-import { Radio, AlertCircle, ShieldAlert, FileText } from "lucide-react";
+import { Radio, AlertCircle, ShieldAlert, FileText, Zap } from "lucide-react";
+import LiveMarketTicker from "@/components/LiveMarketTicker";
 
 type Market = any;
 type Contract = any;
@@ -35,17 +36,28 @@ export default function MarketDetail() {
   const [disputes, setDisputes] = useState<any[]>([]);
   const [disputeReason, setDisputeReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [comments, setComments] = useState<{ id: string; body: string; created_at: string; profiles: { display_name: string } | null }[]>([]);
+  const [commentBody, setCommentBody] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [{ data: m }, { data: pts }, { data: cts }, { data: dsp }] = await Promise.all([
+    const [{ data: m }, { data: pts }, { data: cts }, { data: dsp }, { data: cmt }] = await Promise.all([
       supabase.from("markets").select("*").eq("id", id).maybeSingle(),
       supabase.from("market_data_points").select("ts,value").eq("market_id", id).order("ts"),
       supabase.from("contracts").select("*").eq("market_id", id),
       supabase.from("market_disputes").select("*").eq("market_id", id).order("created_at", { ascending: false }),
+      supabase.from("market_comments").select("id,body,created_at,profiles(display_name)").eq("market_id", id).order("created_at", { ascending: false }).limit(20),
     ]);
     setMarket(m);
+    if (m?.name) {
+      document.title = `${m.name} · Driftworks`;
+      document.querySelector('meta[property="og:title"]')?.setAttribute("content", `${m.name} · Driftworks`);
+      const desc = `${m.description || m.name} — Driftworks prediction market. Resolves ${m.resolution_at ? new Date(m.resolution_at).toLocaleDateString() : "soon"}.`;
+      document.querySelector('meta[property="og:description"]')?.setAttribute("content", desc);
+    }
     setDisputes(dsp || []);
+    setComments((cmt as any) || []);
     setPoints((pts || []).map((p) => ({ ts: new Date(p.ts).getTime(), value: Number(p.value) })));
     setContracts(cts || []);
     if (m?.data_source_id) {
@@ -68,6 +80,12 @@ export default function MarketDetail() {
 
   useEffect(() => {
     load();
+    return () => {
+      // Restore default OG tags on unmount
+      document.title = "Driftworks — Trade the drift from trend";
+      document.querySelector('meta[property="og:title"]')?.setAttribute("content", "Driftworks — Trade the drift from trend");
+      document.querySelector('meta[property="og:description"]')?.setAttribute("content", "Driftworks: prediction markets anchored to real-world trends.");
+    };
   }, [load]);
 
   // Realtime contracts (so prices update live) + new data points
@@ -77,6 +95,7 @@ export default function MarketDetail() {
       .channel(`market-${id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "contracts", filter: `market_id=eq.${id}` }, load)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "market_data_points", filter: `market_id=eq.${id}` }, load)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "market_comments", filter: `market_id=eq.${id}` }, load)
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [id, load]);
@@ -114,10 +133,30 @@ export default function MarketDetail() {
               Creator stake <span className="font-mono-num text-foreground">${Number(market.creator_stake).toFixed(0)}</span>
             </div>
           )}
+          {Number(market.lp_incentive_apy) > 0 && market.lp_incentive_expires_at && (
+            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-bull/10 text-bull font-medium mt-1">
+              <Zap className="w-3 h-3" />
+              +{market.lp_incentive_apy}% APY LP bonus · expires {format(new Date(market.lp_incentive_expires_at), "d MMM")}
+            </span>
+          )}
         </div>
       </div>
 
       <Card className="p-3 mb-6"><MarketLifecycle status={market.status} /></Card>
+
+      {market.live_data_feed && market.status === "open" && contracts.length > 0 && (
+        <div className="mb-6">
+          <LiveMarketTicker
+            marketId={market.id}
+            trendModel={market.trend_model}
+            bandWidth={Number(market.band_width)}
+            bandIsPct={!!market.band_is_pct}
+            unit={market.unit || ""}
+            reserveYes={Number(contracts[0]?.reserve_yes ?? 1000)}
+            reserveNo={Number(contracts[0]?.reserve_no ?? 1000)}
+          />
+        </div>
+      )}
 
       {dataSource && (
         <Card className="p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -359,6 +398,56 @@ export default function MarketDetail() {
           </Button>
         </Card>
       )}
+
+      {/* Comments */}
+      <Card className="p-5 mt-6">
+        <h3 className="font-medium mb-4">Discussion</h3>
+        {user && (
+          <div className="flex gap-2 mb-4">
+            <Textarea
+              rows={2}
+              className="flex-1 text-sm resize-none"
+              placeholder="Add a comment (max 500 chars)…"
+              maxLength={500}
+              value={commentBody}
+              onChange={(e) => setCommentBody(e.target.value)}
+            />
+            <Button
+              size="sm"
+              className="self-end"
+              disabled={commentBusy || commentBody.trim().length === 0}
+              onClick={async () => {
+                setCommentBusy(true);
+                const { error } = await supabase.from("market_comments").insert({
+                  market_id: market.id,
+                  user_id: user.id,
+                  body: commentBody.trim(),
+                });
+                setCommentBusy(false);
+                if (error) return toast.error(error.message);
+                setCommentBody("");
+              }}
+            >
+              Post
+            </Button>
+          </div>
+        )}
+        {comments.length === 0 ? (
+          <div className="text-sm text-muted-foreground">No comments yet. Be the first!</div>
+        ) : (
+          <div className="space-y-3">
+            {comments.map((c) => (
+              <div key={c.id} className="text-sm border border-border/50 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-medium text-xs">{c.profiles?.display_name ?? "Anonymous"}</span>
+                  <span className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}</span>
+                </div>
+                <p className="text-muted-foreground leading-relaxed">{c.body}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

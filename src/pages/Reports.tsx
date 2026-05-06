@@ -21,7 +21,7 @@ export default function Reports() {
     setReports(data || []);
     if (!selected && data?.[0]) setSelected(data[0]);
   };
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { document.title = "Reports · Driftworks"; load(); }, [user]);
 
   const generate = async () => {
     setGenerating(true);
