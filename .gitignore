@@ -10,7 +10,15 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+
+# Environment files — never commit real credentials
+.env
+.env.local
+.env.*.local
 *.local
+
+# Vite temp compilation artefacts created during config evaluation
+*.timestamp-*.mjs
 
 # Editor directories and files
 .vscode/*

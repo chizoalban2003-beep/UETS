@@ -33,7 +33,7 @@ export async function streamCaretaker(options: StreamOptions): Promise<void> {
 
   if (!resp.ok || !resp.body) {
     let err = "Request failed";
-    try { const j = await resp.json(); err = j?.error || err; } catch {}
+    try { const j = await resp.json(); err = j?.error || err; } catch (_) { /* ignore parse errors */ }
     onEvent({ type: "error", error: err });
     onEvent({ type: "done" });
     return;
