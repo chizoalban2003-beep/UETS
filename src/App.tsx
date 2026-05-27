@@ -14,7 +14,7 @@ import MarketDetail from "./pages/MarketDetail";
 import Marketplace from "./pages/Marketplace";
 import Leaderboard from "./pages/Leaderboard";
 import CreatorProfile from "./pages/CreatorProfile";
-import NotFound from "./pages/NotFound.tsx";
+import NotFound from "./pages/NotFound";
 
 // Heavy pages — lazy loaded to keep initial bundle small
 const MarketNew = lazy(() => import("./pages/MarketNew"));
