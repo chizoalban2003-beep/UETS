@@ -226,7 +226,7 @@ Every push and pull request runs the full CI pipeline via GitHub Actions (`.gith
 
 - `.env` is listed in `.gitignore` — never commit real credentials. Copy `.env.example` instead.
 - Edge function secrets are managed exclusively through `supabase secrets set` and are never stored in the repository.
-- The `esbuild` / Vite ≤ 6.4.1 dev-server advisory (GHSA-67mh-4wv8-2f99) affects only the local development server. Production builds are not affected. Upgrading to Vite 8 (which includes the fix) currently breaks the build; this will be addressed once the ecosystem stabilises.
+- The `esbuild` advisory (GHSA-67mh-4wv8-2f99) affects the local development server for Vite 5.x and Vite ≤ 6.4.1. Production builds are not affected. Upgrading to Vite 8 (which includes the fix via the rolldown bundler) currently breaks the build; this will be addressed once the ecosystem stabilises.
 
 ---
 
